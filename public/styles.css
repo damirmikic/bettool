@@ -809,6 +809,131 @@ body {
   border-radius: var(--radius-lg);
 }
 
+.admin-mapping-form--pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-field--full {
+  grid-column: 1 / -1;
+}
+
+.admin-canonical-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+}
+
+.admin-cross-match {
+  align-items: center;
+  background: rgba(0, 200, 83, 0.05);
+  border: 1px solid rgba(0, 200, 83, 0.2);
+  border-radius: var(--radius);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.7rem;
+  margin-top: 0.6rem;
+  padding: 0.45rem 0.7rem;
+}
+
+.cross-match__label {
+  color: var(--muted-hi);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cross-match__value {
+  color: var(--text-strong);
+  font-size: 0.82rem;
+}
+
+.cross-match__confidence {
+  color: var(--green);
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-right: auto;
+}
+
+.cross-match__btn {
+  font-size: 0.7rem;
+  padding: 0.25rem 0.6rem;
+}
+
+.admin-button--submit-pair {
+  justify-self: end;
+}
+
+.mapped-table {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.mapped-table__head,
+.mapped-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 1rem;
+}
+
+.mapped-table__head {
+  background: var(--surface-head);
+  border-bottom: 1px solid var(--border-strong);
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.mapped-row {
+  border-bottom: 1px solid var(--border);
+}
+
+.mapped-row:last-child {
+  border-bottom: none;
+}
+
+.mapped-row__canonical {
+  color: var(--text-strong);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.mapped-row__sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.mapped-source-chip {
+  background: var(--surface-alt);
+  border: 1px solid var(--border-med);
+  border-radius: var(--radius);
+  color: var(--muted-hi);
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  white-space: nowrap;
+}
+
+.mapped-row__actions {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.mapped-unmap-btn {
+  font-size: 0.7rem;
+  padding: 0.25rem 0.6rem;
+  white-space: nowrap;
+}
+
 .admin-form--league {
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
 }
@@ -827,7 +952,8 @@ body {
 }
 
 .admin-form input,
-.admin-mapping-form select {
+.admin-mapping-form select,
+.admin-mapping-form input {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border-med);
   border-radius: var(--radius);
@@ -948,5 +1074,9 @@ body {
   .admin-form--league,
   .admin-mapping-form {
     grid-template-columns: 1fr;
+  }
+
+  .admin-field--full {
+    grid-column: 1;
   }
 }

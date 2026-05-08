@@ -80,18 +80,33 @@
         <section class="admin-section">
           <div class="admin-section__head">
             <h1>League mapping</h1>
-            <p>Choose a bookmaker league and connect it to a canonical league.</p>
+            <p>Select a Merkur and Pinnacle league, then choose or enter the canonical name.</p>
           </div>
-          <form id="league-mapping-form" class="admin-mapping-form">
+          <form id="league-mapping-form" class="admin-mapping-form admin-mapping-form--pair">
             <label class="admin-field">
-              <span>Bookmaker league</span>
-              <select name="sourceLeagueKey" required></select>
+              <span>Merkur league</span>
+              <select name="merkurLeagueKey" required></select>
             </label>
             <label class="admin-field">
-              <span>Canonical league</span>
-              <select name="canonicalLeagueId" required></select>
+              <span>Pinnacle league</span>
+              <select name="pinnacleLeagueKey" required></select>
             </label>
-            <button class="admin-button" type="submit">Save league mapping</button>
+            <div class="admin-field admin-field--full">
+              <span>Canonical name</span>
+              <div class="admin-canonical-suggest">
+                <button class="admin-button admin-button--ghost" type="button" data-use-name="merkur">Use Merkur name</button>
+                <button class="admin-button admin-button--ghost" type="button" data-use-name="pinnacle">Use Pinnacle name</button>
+              </div>
+            </div>
+            <label class="admin-field">
+              <span>Country</span>
+              <input type="text" name="canonicalCountryName" placeholder="e.g. Algeria" autocomplete="off" />
+            </label>
+            <label class="admin-field">
+              <span>League name</span>
+              <input type="text" name="canonicalLeagueName" placeholder="e.g. Ligue 1" required autocomplete="off" />
+            </label>
+            <button class="admin-button admin-field--full admin-button--submit-pair" type="submit">Save league mapping</button>
           </form>
         </section>
       </section>
@@ -122,7 +137,14 @@
             <h1>Mapped leagues</h1>
             <p>Active league mappings currently used by the matcher.</p>
           </div>
-          <div id="mapped-leagues" class="admin-list"></div>
+          <div class="mapped-table">
+            <div class="mapped-table__head">
+              <div>Canonical</div>
+              <div>Sources</div>
+              <div></div>
+            </div>
+            <div id="mapped-leagues"></div>
+          </div>
         </section>
       </section>
 
@@ -145,6 +167,7 @@
             <h2 class="admin-card__title"></h2>
             <p class="admin-card__meta"></p>
             <div class="admin-suggestion admin-league-suggestion" hidden></div>
+            <div class="admin-cross-match" hidden></div>
           </div>
           <div class="admin-card__actions">
             <button class="admin-button admin-button--ghost admin-ignore-league" type="button">
@@ -185,20 +208,11 @@
     </template>
 
     <template id="admin-mapped-league-template">
-      <article class="admin-card">
-        <div class="admin-card__main">
-          <div>
-            <span class="admin-card__eyebrow"></span>
-            <h2 class="admin-card__title"></h2>
-            <p class="admin-card__meta"></p>
-          </div>
-          <div class="admin-card__actions">
-            <button class="admin-button admin-button--ghost admin-unmap-league" type="button">
-              Unmap
-            </button>
-          </div>
-        </div>
-      </article>
+      <div class="mapped-row">
+        <div class="mapped-row__canonical"></div>
+        <div class="mapped-row__sources"></div>
+        <div class="mapped-row__actions"></div>
+      </div>
     </template>
 
     <template id="admin-mapped-team-template">

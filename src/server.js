@@ -221,7 +221,8 @@ const server = createServer(async (request, response) => {
         bookmakerSlug: body.bookmakerSlug,
         sourceCountryName: body.sourceCountryName,
         sourceLeagueName: body.sourceLeagueName,
-        canonicalLeagueId: body.canonicalLeagueId,
+        canonicalCountryName: body.canonicalCountryName,
+        canonicalLeagueName: body.canonicalLeagueName,
       });
       sendJson(response, 200, result);
     } catch (error) {
@@ -262,6 +263,7 @@ const server = createServer(async (request, response) => {
       });
       sendJson(response, 200, result);
     } catch (error) {
+      console.error("[league-mappings]", error);
       sendJson(response, 500, {
         ok: false,
         detail: error instanceof Error ? error.message : String(error),

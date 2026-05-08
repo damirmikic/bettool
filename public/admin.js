@@ -172,18 +172,20 @@ function fillSelect(select, options, formatter) {
 function renderMappingForms() {
   state.sourceLeagueOptions = Array.isArray(state.sourceLeagueOptions) ? state.sourceLeagueOptions : [];
   state.sourceTeamOptions = Array.isArray(state.sourceTeamOptions) ? state.sourceTeamOptions : [];
-  state.canonicalLeagueOptions = Array.isArray(state.canonicalLeagueOptions) ? state.canonicalLeagueOptions : [];
   state.canonicalTeamOptions = Array.isArray(state.canonicalTeamOptions) ? state.canonicalTeamOptions : [];
 
-  fillSelect(elements.leagueMappingForm.elements.sourceLeagueKey, state.sourceLeagueOptions, {
+  const merkurOptions = state.sourceLeagueOptions.filter((o) => o.bookmaker_slug === "merkurxtip");
+  const pinnacleOptions = state.sourceLeagueOptions.filter((o) => o.bookmaker_slug === "pinnacle");
+
+  fillSelect(elements.leagueMappingForm.elements.merkurLeagueKey, merkurOptions, {
     value: leagueSourceKey,
-    label: (option) =>
-      `${option.bookmaker_slug} | ${option.source_country_name ?? "Unknown country"} | ${option.source_league_name}`,
+    label: (option) => `${option.source_country_name ?? "Unknown country"} | ${option.source_league_name}`,
   });
-  fillSelect(elements.leagueMappingForm.elements.canonicalLeagueId, state.canonicalLeagueOptions, {
-    value: (option) => String(option.id),
-    label: canonicalLeagueLabel,
+  fillSelect(elements.leagueMappingForm.elements.pinnacleLeagueKey, pinnacleOptions, {
+    value: leagueSourceKey,
+    label: (option) => `${option.source_country_name ?? "Unknown country"} | ${option.source_league_name}`,
   });
+
   fillSelect(elements.teamMappingForm.elements.sourceTeamKey, state.sourceTeamOptions, {
     value: teamSourceKey,
     label: (option) => `${option.bookmaker_slug} | ${option.source_team_name}`,
@@ -194,7 +196,7 @@ function renderMappingForms() {
   });
 
   elements.leagueMappingForm.querySelector("button[type='submit']").disabled =
-    state.sourceLeagueOptions.length === 0 || state.canonicalLeagueOptions.length === 0;
+    merkurOptions.length === 0 || pinnacleOptions.length === 0;
   elements.teamMappingForm.querySelector("button[type='submit']").disabled =
     state.sourceTeamOptions.length === 0 || state.canonicalTeamOptions.length === 0;
 }
@@ -230,6 +232,47 @@ function renderLeagues(leagues) {
       });
       await loadAdminData();
     });
+
+    const crossMatch = league.crossMatch;
+    if (crossMatch) {
+      const crossEl = card.querySelector(".admin-cross-match");
+      crossEl.hidden = false;
+      const bookmakerLabel = crossMatch.bookmakerSlug === "pinnacle" ? "Pinnacle" : crossMatch.bookmakerSlug === "merkurxtip" ? "Merkur" : crossMatch.bookmakerSlug;
+      const sourceName = crossMatch.sourceCountryName
+        ? `${crossMatch.sourceCountryName} | ${crossMatch.sourceLeagueName}`
+        : crossMatch.sourceLeagueName;
+      crossEl.innerHTML = `
+        <span class="cross-match__label">${bookmakerLabel} match</span>
+        <strong class="cross-match__value">${sourceName}</strong>
+        <span class="cross-match__confidence">${Math.round(crossMatch.confidence * 100)}%</span>
+      `;
+      const useBtn = document.createElement("button");
+      useBtn.type = "button";
+      useBtn.className = "admin-button admin-button--ghost cross-match__btn";
+      useBtn.textContent = "Use name";
+      useBtn.addEventListener("click", () => {
+        form.elements.canonicalCountryName.value = crossMatch.sourceCountryName ?? "";
+        form.elements.canonicalLeagueName.value = crossMatch.sourceLeagueName;
+      });
+      const pairBtn = document.createElement("button");
+      pairBtn.type = "button";
+      pairBtn.className = "admin-button cross-match__btn";
+      pairBtn.textContent = "Map pair";
+      pairBtn.addEventListener("click", async () => {
+        const canonicalCountryName = form.elements.canonicalCountryName.value.trim() || crossMatch.sourceCountryName || null;
+        const canonicalLeagueName = form.elements.canonicalLeagueName.value.trim() || crossMatch.sourceLeagueName;
+        await postJson(`/api/admin/unmatched-leagues/${league.id}/map`, { canonicalCountryName, canonicalLeagueName });
+        await postJson("/api/admin/league-mappings", {
+          bookmakerSlug: crossMatch.bookmakerSlug,
+          sourceCountryName: crossMatch.sourceCountryName || null,
+          sourceLeagueName: crossMatch.sourceLeagueName,
+          canonicalCountryName,
+          canonicalLeagueName,
+        });
+        await loadAdminData();
+      });
+      crossEl.append(useBtn, pairBtn);
+    }
 
     card.querySelector(".admin-ignore-league").addEventListener("click", async () => {
       await postJson(`/api/admin/unmatched-leagues/${league.id}/ignore`);
@@ -301,19 +344,45 @@ function renderMappedLeagues(mappings) {
     return;
   }
 
+  const grouped = new Map();
+  for (const mapping of mappings) {
+    const key = `${mapping.canonical_country_name ?? ""}|${mapping.canonical_league_name}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, { canonical_country_name: mapping.canonical_country_name, canonical_league_name: mapping.canonical_league_name, entries: [] });
+    }
+    grouped.get(key).entries.push(mapping);
+  }
+
   const fragment = document.createDocumentFragment();
 
-  for (const mapping of mappings) {
-    const card = elements.mappedLeagueTemplate.content.firstElementChild.cloneNode(true);
-    card.querySelector(".admin-card__eyebrow").textContent = mapping.bookmaker_name;
-    card.querySelector(".admin-card__title").textContent = mapping.source_league_name;
-    card.querySelector(".admin-card__meta").textContent =
-      `${mapping.source_country_name ?? "Unknown country"} -> ${mapping.canonical_country_name ?? "Unknown country"} | ${mapping.canonical_league_name}`;
-    card.querySelector(".admin-unmap-league").addEventListener("click", async () => {
-      await postJson(`/api/admin/league-mappings/${mapping.id}/unmap`);
-      await loadAdminData();
-    });
-    fragment.append(card);
+  for (const group of grouped.values()) {
+    const row = elements.mappedLeagueTemplate.content.firstElementChild.cloneNode(true);
+
+    const canonicalLabel = group.canonical_country_name
+      ? `${group.canonical_country_name} — ${group.canonical_league_name}`
+      : group.canonical_league_name;
+    row.querySelector(".mapped-row__canonical").textContent = canonicalLabel;
+
+    const sourcesEl = row.querySelector(".mapped-row__sources");
+    const actionsEl = row.querySelector(".mapped-row__actions");
+
+    for (const entry of group.entries) {
+      const chip = document.createElement("span");
+      chip.className = "mapped-source-chip";
+      chip.textContent = `${entry.bookmaker_name}: ${entry.source_country_name ? entry.source_country_name + " | " : ""}${entry.source_league_name}`;
+      sourcesEl.append(chip);
+
+      const btn = document.createElement("button");
+      btn.className = "admin-button admin-button--ghost mapped-unmap-btn";
+      btn.textContent = `Unmap ${entry.bookmaker_name}`;
+      btn.addEventListener("click", async () => {
+        await postJson(`/api/admin/league-mappings/${entry.id}/unmap`);
+        await loadAdminData();
+      });
+      actionsEl.append(btn);
+    }
+
+    fragment.append(row);
   }
 
   elements.mappedLeagues.append(fragment);
@@ -388,16 +457,39 @@ async function loadAdminData() {
   renderMappedTeams(mappings.mappedTeams);
 }
 
+elements.leagueMappingForm.querySelectorAll("[data-use-name]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const key = btn.dataset.useName === "merkur"
+      ? elements.leagueMappingForm.elements.merkurLeagueKey.value
+      : elements.leagueMappingForm.elements.pinnacleLeagueKey.value;
+    if (!key) return;
+    const parsed = JSON.parse(key);
+    elements.leagueMappingForm.elements.canonicalCountryName.value = parsed.sourceCountryName ?? "";
+    elements.leagueMappingForm.elements.canonicalLeagueName.value = parsed.sourceLeagueName ?? "";
+  });
+});
+
 elements.leagueMappingForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const source = JSON.parse(elements.leagueMappingForm.elements.sourceLeagueKey.value);
+  const merkur = JSON.parse(elements.leagueMappingForm.elements.merkurLeagueKey.value);
+  const pinnacle = JSON.parse(elements.leagueMappingForm.elements.pinnacleLeagueKey.value);
+  const canonicalCountryName = elements.leagueMappingForm.elements.canonicalCountryName.value.trim() || null;
+  const canonicalLeagueName = elements.leagueMappingForm.elements.canonicalLeagueName.value.trim();
 
   await postJson("/api/admin/league-mappings", {
-    bookmakerSlug: source.bookmakerSlug,
-    sourceCountryName: source.sourceCountryName || null,
-    sourceLeagueName: source.sourceLeagueName,
-    canonicalLeagueId: Number(elements.leagueMappingForm.elements.canonicalLeagueId.value),
+    bookmakerSlug: merkur.bookmakerSlug,
+    sourceCountryName: merkur.sourceCountryName || null,
+    sourceLeagueName: merkur.sourceLeagueName,
+    canonicalCountryName,
+    canonicalLeagueName,
+  });
+  await postJson("/api/admin/league-mappings", {
+    bookmakerSlug: pinnacle.bookmakerSlug,
+    sourceCountryName: pinnacle.sourceCountryName || null,
+    sourceLeagueName: pinnacle.sourceLeagueName,
+    canonicalCountryName,
+    canonicalLeagueName,
   });
 
   await loadAdminData();

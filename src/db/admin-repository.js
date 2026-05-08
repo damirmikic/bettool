@@ -240,6 +240,29 @@ function pickBestLeagueSuggestion(unmatchedLeague, canonicalLeagues) {
   return best && best.confidence >= 0.35 ? best : null;
 }
 
+function pickBestCrossMatch(league, allLeagues) {
+  let best = null;
+
+  for (const other of allLeagues) {
+    if (other.bookmaker_slug === league.bookmaker_slug) continue;
+
+    const baseScore = similarityScore(league.source_league_name, other.source_league_name);
+    const countryBoost = scoreCountryMatch(league.source_country_name, other.source_country_name);
+    const confidence = Math.min(1, Number((baseScore + countryBoost).toFixed(3)));
+
+    if (!best || confidence > best.confidence) {
+      best = {
+        bookmakerSlug: other.bookmaker_slug,
+        sourceCountryName: other.source_country_name ?? null,
+        sourceLeagueName: other.source_league_name,
+        confidence,
+      };
+    }
+  }
+
+  return best && best.confidence >= 0.35 ? best : null;
+}
+
 function pickBestTeamSuggestion(unmatchedTeamName, sourceCountryName, canonicalTeams) {
   let best = null;
 
@@ -601,10 +624,13 @@ export async function listAdminReviewData({ limit = DEFAULT_ADMIN_REVIEW_LIMIT }
     `),
   ]);
 
+  const allOpenLeagues = unmatchedLeagues.rows;
+
   return {
-    unmatchedLeagues: unmatchedLeagues.rows.map((row) => ({
+    unmatchedLeagues: allOpenLeagues.map((row) => ({
       ...row,
       suggestion: pickBestLeagueSuggestion(row, canonicalLeagues.rows),
+      crossMatch: pickBestCrossMatch(row, allOpenLeagues),
     })),
     unmatchedEvents: unmatchedEvents.rows.map((row) => ({
       ...row,
@@ -802,6 +828,7 @@ export async function listAdminMappingData({
         MAX(last_seen_at) AS last_seen_at,
         SUM(seen_count) AS seen_count
       FROM admin_unmatched_leagues
+      WHERE status = 'open'
       GROUP BY bookmaker_slug, source_country_name, source_league_name
       ORDER BY bookmaker_slug ASC, source_country_name ASC, source_league_name ASC
       LIMIT ?
@@ -912,17 +939,29 @@ export async function createLeagueMapping({
   bookmakerSlug,
   sourceCountryName,
   sourceLeagueName,
-  canonicalLeagueId,
+  canonicalCountryName,
+  canonicalLeagueName,
 }) {
   const client = await createTursoClient();
   const bookmakerId = await requireBookmakerId(client, bookmakerSlug);
+  const countryId = canonicalCountryName
+    ? await getOrCreateCountry(client, canonicalCountryName)
+    : null;
+  const canonicalLeagueId = await getOrCreateLeague(client, countryId, canonicalLeagueName);
+
+  console.log("[createLeagueMapping] args", {
+    bookmakerSlug, sourceCountryName, sourceLeagueName,
+    countryId, canonicalLeagueId,
+    bookmakerId,
+    types: { bookmakerId: typeof bookmakerId, canonicalLeagueId: typeof canonicalLeagueId, countryId: typeof countryId },
+  });
 
   await upsertLeagueMapping({
     client,
     bookmakerId,
     sourceCountryName: cleanDisplayText(sourceCountryName),
     sourceLeagueName: cleanDisplayText(sourceLeagueName),
-    canonicalLeagueId: Number(canonicalLeagueId),
+    canonicalLeagueId,
   });
 
   await client.execute({
