@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BetTool Admin</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <nav class="topbar">
+      <div class="topbar__brand">
+        <span class="topbar__logo">◆</span>
+        <span class="topbar__name">BetTool Admin</span>
+      </div>
+      <a class="topbar__link topbar__link--active" href="/admin.html">Admin</a>
+      <a class="topbar__link" href="/">Odds</a>
+      <button id="admin-refresh-button" class="btn-refresh" type="button">Refresh</button>
+    </nav>
+
+    <main class="admin-shell">
+      <section class="admin-status">
+        <div class="admin-status__card">
+          <span class="stat__label">Open unmatched leagues</span>
+          <strong id="admin-league-count" class="stat__value">-</strong>
+        </div>
+        <div class="admin-status__card">
+          <span class="stat__label">Open unmatched events</span>
+          <strong id="admin-event-count" class="stat__value">-</strong>
+        </div>
+        <div class="admin-status__card">
+          <span class="stat__label">Database status</span>
+          <strong id="admin-db-status" class="stat__value">-</strong>
+        </div>
+      </section>
+
+      <section class="admin-status admin-status--coverage">
+        <div class="admin-status__card">
+          <span class="stat__label">Merkur leagues</span>
+          <strong id="coverage-merkur-leagues" class="stat__value">-</strong>
+          <span class="admin-status__meta">matches: <strong id="coverage-merkur-matches">-</strong></span>
+        </div>
+        <div class="admin-status__card">
+          <span class="stat__label">Pinnacle leagues</span>
+          <strong id="coverage-pinnacle-leagues" class="stat__value">-</strong>
+          <span class="admin-status__meta">matches: <strong id="coverage-pinnacle-matches">-</strong></span>
+        </div>
+        <div class="admin-status__card">
+          <span class="stat__label">Comparable coverage</span>
+          <strong id="coverage-comparable-leagues" class="stat__value">-</strong>
+          <span class="admin-status__meta">matches: <strong id="coverage-comparable-matches">-</strong></span>
+        </div>
+      </section>
+
+      <section class="admin-tabs">
+        <button class="admin-tab admin-tab--active" type="button" data-tab="review">Review Queue</button>
+        <button class="admin-tab" type="button" data-tab="league-mapping">League Mapping</button>
+        <button class="admin-tab" type="button" data-tab="team-mapping">Team Mapping</button>
+        <button class="admin-tab" type="button" data-tab="mapped-leagues">Mapped Leagues</button>
+        <button class="admin-tab" type="button" data-tab="mapped-teams">Mapped Teams</button>
+      </section>
+
+      <section class="admin-panel admin-panel--active" data-panel="review">
+        <section class="admin-section">
+          <div class="admin-section__head">
+            <h1>Unmatched leagues</h1>
+            <p id="admin-message"></p>
+          </div>
+          <div id="unmatched-leagues" class="admin-list"></div>
+        </section>
+
+        <section class="admin-section">
+          <div class="admin-section__head">
+            <h1>Unmatched events</h1>
+          </div>
+          <div id="unmatched-events" class="admin-list"></div>
+        </section>
+      </section>
+
+      <section class="admin-panel" data-panel="league-mapping">
+        <section class="admin-section">
+          <div class="admin-section__head">
+            <h1>League mapping</h1>
+            <p>Choose a bookmaker league and connect it to a canonical league.</p>
+          </div>
+          <form id="league-mapping-form" class="admin-mapping-form">
+            <label class="admin-field">
+              <span>Bookmaker league</span>
+              <select name="sourceLeagueKey" required></select>
+            </label>
+            <label class="admin-field">
+              <span>Canonical league</span>
+              <select name="canonicalLeagueId" required></select>
+            </label>
+            <button class="admin-button" type="submit">Save league mapping</button>
+          </form>
+        </section>
+      </section>
+
+      <section class="admin-panel" data-panel="team-mapping">
+        <section class="admin-section">
+          <div class="admin-section__head">
+            <h1>Team mapping</h1>
+            <p>Choose a bookmaker team and connect it to a canonical team.</p>
+          </div>
+          <form id="team-mapping-form" class="admin-mapping-form">
+            <label class="admin-field">
+              <span>Bookmaker team</span>
+              <select name="sourceTeamKey" required></select>
+            </label>
+            <label class="admin-field">
+              <span>Canonical team</span>
+              <select name="canonicalTeamId" required></select>
+            </label>
+            <button class="admin-button" type="submit">Save team mapping</button>
+          </form>
+        </section>
+      </section>
+
+      <section class="admin-panel" data-panel="mapped-leagues">
+        <section class="admin-section">
+          <div class="admin-section__head">
+            <h1>Mapped leagues</h1>
+            <p>Active league mappings currently used by the matcher.</p>
+          </div>
+          <div id="mapped-leagues" class="admin-list"></div>
+        </section>
+      </section>
+
+      <section class="admin-panel" data-panel="mapped-teams">
+        <section class="admin-section">
+          <div class="admin-section__head">
+            <h1>Mapped teams</h1>
+            <p>Active team aliases currently used by the matcher.</p>
+          </div>
+          <div id="mapped-teams" class="admin-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <template id="admin-league-template">
+      <article class="admin-card">
+        <div class="admin-card__main">
+          <div>
+            <span class="admin-card__eyebrow"></span>
+            <h2 class="admin-card__title"></h2>
+            <p class="admin-card__meta"></p>
+            <div class="admin-suggestion admin-league-suggestion" hidden></div>
+          </div>
+          <div class="admin-card__actions">
+            <button class="admin-button admin-button--ghost admin-ignore-league" type="button">
+              Ignore
+            </button>
+          </div>
+        </div>
+        <form class="admin-form admin-form--league">
+          <input name="canonicalCountryName" placeholder="Canonical country" />
+          <input name="canonicalLeagueName" placeholder="Canonical league" required />
+          <button class="admin-button" type="submit">Map league</button>
+        </form>
+      </article>
+    </template>
+
+    <template id="admin-event-template">
+      <article class="admin-card">
+        <div class="admin-card__main">
+          <div>
+            <span class="admin-card__eyebrow"></span>
+            <h2 class="admin-card__title"></h2>
+            <p class="admin-card__meta"></p>
+            <div class="admin-suggestion admin-event-suggestion" hidden></div>
+          </div>
+          <div class="admin-card__actions">
+            <button class="admin-button admin-button--ghost admin-ignore-event" type="button">
+              Ignore
+            </button>
+          </div>
+        </div>
+        <form class="admin-form admin-form--event">
+          <input name="canonicalCountryName" placeholder="Canonical country" />
+          <input name="canonicalHomeName" placeholder="Canonical home team" required />
+          <input name="canonicalAwayName" placeholder="Canonical away team" required />
+          <button class="admin-button" type="submit">Create aliases</button>
+        </form>
+      </article>
+    </template>
+
+    <template id="admin-mapped-league-template">
+      <article class="admin-card">
+        <div class="admin-card__main">
+          <div>
+            <span class="admin-card__eyebrow"></span>
+            <h2 class="admin-card__title"></h2>
+            <p class="admin-card__meta"></p>
+          </div>
+          <div class="admin-card__actions">
+            <button class="admin-button admin-button--ghost admin-unmap-league" type="button">
+              Unmap
+            </button>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <template id="admin-mapped-team-template">
+      <article class="admin-card">
+        <div class="admin-card__main">
+          <div>
+            <span class="admin-card__eyebrow"></span>
+            <h2 class="admin-card__title"></h2>
+            <p class="admin-card__meta"></p>
+          </div>
+          <div class="admin-card__actions">
+            <button class="admin-button admin-button--ghost admin-unmap-team" type="button">
+              Unmap
+            </button>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <script type="module" src="/admin.js"></script>
+  </body>
+</html>

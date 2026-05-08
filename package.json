@@ -1,0 +1,15 @@
+{
+  "name": "bettool",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "cli": "node src/cli.js",
+    "db:init": "node src/scripts/init-admin-db.js",
+    "db:check": "node src/scripts/check-admin-db.js"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.14.0"
+  }
+}

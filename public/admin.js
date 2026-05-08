@@ -1,0 +1,437 @@
+const elements = {
+  refreshButton: document.querySelector("#admin-refresh-button"),
+  leagueCount: document.querySelector("#admin-league-count"),
+  eventCount: document.querySelector("#admin-event-count"),
+  dbStatus: document.querySelector("#admin-db-status"),
+  merkurLeagues: document.querySelector("#coverage-merkur-leagues"),
+  merkurMatches: document.querySelector("#coverage-merkur-matches"),
+  pinnacleLeagues: document.querySelector("#coverage-pinnacle-leagues"),
+  pinnacleMatches: document.querySelector("#coverage-pinnacle-matches"),
+  comparableLeagues: document.querySelector("#coverage-comparable-leagues"),
+  comparableMatches: document.querySelector("#coverage-comparable-matches"),
+  message: document.querySelector("#admin-message"),
+  leagues: document.querySelector("#unmatched-leagues"),
+  events: document.querySelector("#unmatched-events"),
+  mappedLeagues: document.querySelector("#mapped-leagues"),
+  mappedTeams: document.querySelector("#mapped-teams"),
+  leagueMappingForm: document.querySelector("#league-mapping-form"),
+  teamMappingForm: document.querySelector("#team-mapping-form"),
+  tabs: Array.from(document.querySelectorAll(".admin-tab")),
+  panels: Array.from(document.querySelectorAll(".admin-panel")),
+  leagueTemplate: document.querySelector("#admin-league-template"),
+  eventTemplate: document.querySelector("#admin-event-template"),
+  mappedLeagueTemplate: document.querySelector("#admin-mapped-league-template"),
+  mappedTeamTemplate: document.querySelector("#admin-mapped-team-template"),
+};
+
+const state = {
+  sourceLeagueOptions: [],
+  sourceTeamOptions: [],
+  canonicalLeagueOptions: [],
+  canonicalTeamOptions: [],
+};
+
+function pct(value) {
+  return `${Math.round(Number(value ?? 0) * 100)}%`;
+}
+
+function leagueSourceKey(option) {
+  return JSON.stringify({
+    bookmakerSlug: option.bookmaker_slug ?? "",
+    sourceCountryName: option.source_country_name ?? "",
+    sourceLeagueName: option.source_league_name ?? "",
+  });
+}
+
+function teamSourceKey(option) {
+  return JSON.stringify({
+    bookmakerSlug: option.bookmaker_slug ?? "",
+    sourceTeamName: option.source_team_name ?? "",
+  });
+}
+
+function canonicalLeagueLabel(option) {
+  return option.canonical_country_name
+    ? `${option.canonical_country_name} | ${option.canonical_league_name}`
+    : option.canonical_league_name;
+}
+
+function canonicalTeamLabel(option) {
+  return option.canonical_country_name
+    ? `${option.canonical_country_name} | ${option.canonical_team_name}`
+    : option.canonical_team_name;
+}
+
+async function postJson(url, payload = {}) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.detail ?? `Request failed for ${url}`);
+  }
+
+  return response.json();
+}
+
+async function getJson(url) {
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.detail ?? `Request failed for ${url}`);
+  }
+
+  return response.json();
+}
+
+function renderEmpty(container, message) {
+  const empty = document.createElement("p");
+  empty.className = "empty-state";
+  empty.textContent = message;
+  container.replaceChildren(empty);
+}
+
+function setActiveTab(tabName) {
+  for (const tab of elements.tabs) {
+    tab.classList.toggle("admin-tab--active", tab.dataset.tab === tabName);
+  }
+
+  for (const panel of elements.panels) {
+    panel.classList.toggle("admin-panel--active", panel.dataset.panel === tabName);
+  }
+}
+
+function renderLeagueSuggestion(node, suggestion) {
+  if (!suggestion) {
+    node.hidden = true;
+    return;
+  }
+
+  node.hidden = false;
+  node.innerHTML = `
+    <span class="admin-suggestion__label">Suggested mapping</span>
+    <strong class="admin-suggestion__value">${suggestion.canonicalCountryName || "Unknown country"} | ${suggestion.canonicalLeagueName}</strong>
+    <span class="admin-suggestion__confidence">Confidence ${pct(suggestion.confidence)}</span>
+  `;
+}
+
+function renderEventSuggestion(node, suggestion) {
+  const home = suggestion?.home ?? null;
+  const away = suggestion?.away ?? null;
+
+  if (!home && !away) {
+    node.hidden = true;
+    return;
+  }
+
+  node.hidden = false;
+
+  const parts = [];
+
+  if (home) {
+    parts.push(`Home: ${home.canonicalTeamName} (${pct(home.confidence)})`);
+  }
+
+  if (away) {
+    parts.push(`Away: ${away.canonicalTeamName} (${pct(away.confidence)})`);
+  }
+
+  node.innerHTML = `
+    <span class="admin-suggestion__label">Suggested aliases</span>
+    <strong class="admin-suggestion__value">${parts.join(" | ")}</strong>
+  `;
+}
+
+function fillSelect(select, options, formatter) {
+  select.replaceChildren();
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = options.length > 0 ? "Choose..." : "No options available";
+  select.append(placeholder);
+
+  for (const option of options) {
+    const node = document.createElement("option");
+    node.value = formatter.value(option);
+    node.textContent = formatter.label(option);
+    select.append(node);
+  }
+
+  select.disabled = options.length === 0;
+  if (options.length > 0) {
+    select.selectedIndex = 1;
+  }
+}
+
+function renderMappingForms() {
+  state.sourceLeagueOptions = Array.isArray(state.sourceLeagueOptions) ? state.sourceLeagueOptions : [];
+  state.sourceTeamOptions = Array.isArray(state.sourceTeamOptions) ? state.sourceTeamOptions : [];
+  state.canonicalLeagueOptions = Array.isArray(state.canonicalLeagueOptions) ? state.canonicalLeagueOptions : [];
+  state.canonicalTeamOptions = Array.isArray(state.canonicalTeamOptions) ? state.canonicalTeamOptions : [];
+
+  fillSelect(elements.leagueMappingForm.elements.sourceLeagueKey, state.sourceLeagueOptions, {
+    value: leagueSourceKey,
+    label: (option) =>
+      `${option.bookmaker_slug} | ${option.source_country_name ?? "Unknown country"} | ${option.source_league_name}`,
+  });
+  fillSelect(elements.leagueMappingForm.elements.canonicalLeagueId, state.canonicalLeagueOptions, {
+    value: (option) => String(option.id),
+    label: canonicalLeagueLabel,
+  });
+  fillSelect(elements.teamMappingForm.elements.sourceTeamKey, state.sourceTeamOptions, {
+    value: teamSourceKey,
+    label: (option) => `${option.bookmaker_slug} | ${option.source_team_name}`,
+  });
+  fillSelect(elements.teamMappingForm.elements.canonicalTeamId, state.canonicalTeamOptions, {
+    value: (option) => String(option.id),
+    label: canonicalTeamLabel,
+  });
+
+  elements.leagueMappingForm.querySelector("button[type='submit']").disabled =
+    state.sourceLeagueOptions.length === 0 || state.canonicalLeagueOptions.length === 0;
+  elements.teamMappingForm.querySelector("button[type='submit']").disabled =
+    state.sourceTeamOptions.length === 0 || state.canonicalTeamOptions.length === 0;
+}
+
+function renderLeagues(leagues) {
+  elements.leagues.replaceChildren();
+
+  if (!Array.isArray(leagues) || leagues.length === 0) {
+    renderEmpty(elements.leagues, "No open unmatched leagues.");
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const league of leagues) {
+    const card = elements.leagueTemplate.content.firstElementChild.cloneNode(true);
+    card.querySelector(".admin-card__eyebrow").textContent = `${league.bookmaker_slug} | ${league.seen_count}x`;
+    card.querySelector(".admin-card__title").textContent = league.source_league_name;
+    card.querySelector(".admin-card__meta").textContent =
+      `${league.source_country_name ?? "Unknown country"} | last seen ${new Date(league.last_seen_at).toLocaleString()}`;
+    renderLeagueSuggestion(card.querySelector(".admin-league-suggestion"), league.suggestion);
+
+    const form = card.querySelector(".admin-form--league");
+    form.elements.canonicalCountryName.value =
+      league.suggestion?.canonicalCountryName ?? league.source_country_name ?? "";
+    form.elements.canonicalLeagueName.value =
+      league.suggestion?.canonicalLeagueName ?? league.source_league_name ?? "";
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await postJson(`/api/admin/unmatched-leagues/${league.id}/map`, {
+        canonicalCountryName: form.elements.canonicalCountryName.value.trim(),
+        canonicalLeagueName: form.elements.canonicalLeagueName.value.trim(),
+      });
+      await loadAdminData();
+    });
+
+    card.querySelector(".admin-ignore-league").addEventListener("click", async () => {
+      await postJson(`/api/admin/unmatched-leagues/${league.id}/ignore`);
+      await loadAdminData();
+    });
+
+    fragment.append(card);
+  }
+
+  elements.leagues.append(fragment);
+}
+
+function renderEvents(events) {
+  elements.events.replaceChildren();
+
+  if (!Array.isArray(events) || events.length === 0) {
+    renderEmpty(elements.events, "No open unmatched events.");
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const unmatchedEvent of events) {
+    const card = elements.eventTemplate.content.firstElementChild.cloneNode(true);
+    card.querySelector(".admin-card__eyebrow").textContent =
+      `${unmatchedEvent.bookmaker_slug} | ${unmatchedEvent.seen_count}x`;
+    card.querySelector(".admin-card__title").textContent =
+      `${unmatchedEvent.source_home_name} vs ${unmatchedEvent.source_away_name}`;
+    card.querySelector(".admin-card__meta").textContent =
+      `${unmatchedEvent.source_country_name ?? "Unknown country"} | ${unmatchedEvent.source_league_name ?? "Unknown league"} | ${unmatchedEvent.source_start_time ? new Date(unmatchedEvent.source_start_time).toLocaleString() : "No kickoff"}`;
+    renderEventSuggestion(card.querySelector(".admin-event-suggestion"), unmatchedEvent.suggestion);
+
+    const form = card.querySelector(".admin-form--event");
+    form.elements.canonicalCountryName.value =
+      unmatchedEvent.suggestion?.home?.canonicalCountryName ??
+      unmatchedEvent.suggestion?.away?.canonicalCountryName ??
+      unmatchedEvent.source_country_name ??
+      "";
+    form.elements.canonicalHomeName.value =
+      unmatchedEvent.suggestion?.home?.canonicalTeamName ?? unmatchedEvent.source_home_name ?? "";
+    form.elements.canonicalAwayName.value =
+      unmatchedEvent.suggestion?.away?.canonicalTeamName ?? unmatchedEvent.source_away_name ?? "";
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await postJson(`/api/admin/unmatched-events/${unmatchedEvent.id}/map`, {
+        canonicalCountryName: form.elements.canonicalCountryName.value.trim(),
+        canonicalHomeName: form.elements.canonicalHomeName.value.trim(),
+        canonicalAwayName: form.elements.canonicalAwayName.value.trim(),
+      });
+      await loadAdminData();
+    });
+
+    card.querySelector(".admin-ignore-event").addEventListener("click", async () => {
+      await postJson(`/api/admin/unmatched-events/${unmatchedEvent.id}/ignore`);
+      await loadAdminData();
+    });
+
+    fragment.append(card);
+  }
+
+  elements.events.append(fragment);
+}
+
+function renderMappedLeagues(mappings) {
+  elements.mappedLeagues.replaceChildren();
+
+  if (!Array.isArray(mappings) || mappings.length === 0) {
+    renderEmpty(elements.mappedLeagues, "No active league mappings.");
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const mapping of mappings) {
+    const card = elements.mappedLeagueTemplate.content.firstElementChild.cloneNode(true);
+    card.querySelector(".admin-card__eyebrow").textContent = mapping.bookmaker_name;
+    card.querySelector(".admin-card__title").textContent = mapping.source_league_name;
+    card.querySelector(".admin-card__meta").textContent =
+      `${mapping.source_country_name ?? "Unknown country"} -> ${mapping.canonical_country_name ?? "Unknown country"} | ${mapping.canonical_league_name}`;
+    card.querySelector(".admin-unmap-league").addEventListener("click", async () => {
+      await postJson(`/api/admin/league-mappings/${mapping.id}/unmap`);
+      await loadAdminData();
+    });
+    fragment.append(card);
+  }
+
+  elements.mappedLeagues.append(fragment);
+}
+
+function renderMappedTeams(mappings) {
+  elements.mappedTeams.replaceChildren();
+
+  if (!Array.isArray(mappings) || mappings.length === 0) {
+    renderEmpty(elements.mappedTeams, "No active team mappings.");
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const mapping of mappings) {
+    const card = elements.mappedTeamTemplate.content.firstElementChild.cloneNode(true);
+    card.querySelector(".admin-card__eyebrow").textContent = mapping.bookmaker_name;
+    card.querySelector(".admin-card__title").textContent = mapping.source_team_name;
+    card.querySelector(".admin-card__meta").textContent =
+      `${mapping.canonical_country_name ?? "Unknown country"} | ${mapping.canonical_team_name}`;
+    card.querySelector(".admin-unmap-team").addEventListener("click", async () => {
+      await postJson(`/api/admin/team-mappings/${mapping.id}/unmap`);
+      await loadAdminData();
+    });
+    fragment.append(card);
+  }
+
+  elements.mappedTeams.append(fragment);
+}
+
+function applyCoverage(status, review) {
+  const coverage = review.coverage ?? {};
+
+  elements.dbStatus.textContent =
+    status.config?.hasUrl && status.config?.hasAuthToken ? "Configured" : "Missing env";
+  elements.leagueCount.textContent = Array.isArray(review.unmatchedLeagues)
+    ? review.unmatchedLeagues.length
+    : 0;
+  elements.eventCount.textContent = Array.isArray(review.unmatchedEvents)
+    ? review.unmatchedEvents.length
+    : 0;
+  elements.merkurLeagues.textContent = coverage.merkur?.totalLeagues ?? 0;
+  elements.merkurMatches.textContent = coverage.merkur?.totalMatches ?? 0;
+  elements.pinnacleLeagues.textContent = coverage.pinnacle?.totalLeagues ?? 0;
+  elements.pinnacleMatches.textContent = coverage.pinnacle?.totalMatches ?? 0;
+  elements.comparableLeagues.textContent = coverage.comparable?.matchedLeagues ?? 0;
+  elements.comparableMatches.textContent = coverage.comparable?.matchedMatches ?? 0;
+}
+
+async function loadAdminData() {
+  elements.message.textContent = "Loading admin review queue...";
+
+  const [status, review, mappings] = await Promise.all([
+    getJson("/api/admin/status"),
+    getJson("/api/admin/review"),
+    getJson("/api/admin/mappings"),
+  ]);
+
+  applyCoverage(status, review);
+  elements.message.textContent = "Review, map, and unmap bookmaker-specific rows below.";
+
+  state.sourceLeagueOptions = mappings.sourceLeagueOptions ?? [];
+  state.sourceTeamOptions = mappings.sourceTeamOptions ?? [];
+  state.canonicalLeagueOptions = mappings.canonicalLeagueOptions ?? [];
+  state.canonicalTeamOptions = mappings.canonicalTeamOptions ?? [];
+
+  renderLeagues(review.unmatchedLeagues);
+  renderEvents(review.unmatchedEvents);
+  renderMappingForms();
+  renderMappedLeagues(mappings.mappedLeagues);
+  renderMappedTeams(mappings.mappedTeams);
+}
+
+elements.leagueMappingForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const source = JSON.parse(elements.leagueMappingForm.elements.sourceLeagueKey.value);
+
+  await postJson("/api/admin/league-mappings", {
+    bookmakerSlug: source.bookmakerSlug,
+    sourceCountryName: source.sourceCountryName || null,
+    sourceLeagueName: source.sourceLeagueName,
+    canonicalLeagueId: Number(elements.leagueMappingForm.elements.canonicalLeagueId.value),
+  });
+
+  await loadAdminData();
+  setActiveTab("mapped-leagues");
+});
+
+elements.teamMappingForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const source = JSON.parse(elements.teamMappingForm.elements.sourceTeamKey.value);
+
+  await postJson("/api/admin/team-mappings", {
+    bookmakerSlug: source.bookmakerSlug,
+    sourceTeamName: source.sourceTeamName,
+    canonicalTeamId: Number(elements.teamMappingForm.elements.canonicalTeamId.value),
+  });
+
+  await loadAdminData();
+  setActiveTab("mapped-teams");
+});
+
+for (const tab of elements.tabs) {
+  tab.addEventListener("click", () => {
+    setActiveTab(tab.dataset.tab);
+  });
+}
+
+elements.refreshButton.addEventListener("click", () => {
+  loadAdminData().catch((error) => {
+    elements.message.textContent = error.message;
+  });
+});
+
+setActiveTab("review");
+loadAdminData().catch((error) => {
+  elements.message.textContent = error.message;
+});

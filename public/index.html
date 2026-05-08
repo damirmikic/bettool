@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BetTool</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <nav class="topbar">
+      <div class="topbar__brand">
+        <span class="topbar__logo">◆</span>
+        <span class="topbar__name">BetTool</span>
+      </div>
+
+      <a class="topbar__link" href="/admin.html">Admin</a>
+
+      <div class="topbar__search">
+        <svg class="search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="8.5" cy="8.5" r="5.5"></circle>
+          <path d="M15 15l-3-3"></path>
+        </svg>
+        <input id="search-input" type="search" placeholder="Search teams or leagues..." autocomplete="off" />
+      </div>
+
+      <div class="topbar__stats">
+        <div class="stat">
+          <span class="stat__label">Matched</span>
+          <strong class="stat__value" id="matched-events">-</strong>
+        </div>
+        <div class="stat stat--arb">
+          <span class="stat__label">Arbs</span>
+          <strong class="stat__value" id="arb-count">-</strong>
+        </div>
+        <div class="stat">
+          <span class="stat__label">Avg Edge</span>
+          <strong class="stat__value" id="avg-edge">-</strong>
+        </div>
+      </div>
+
+      <button id="refresh-button" class="btn-refresh" type="button">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M4 4a8 8 0 0112.94 3"></path>
+          <path d="M16 16a8 8 0 01-12.94-3"></path>
+          <polyline points="1 4 4 4 4 7"></polyline>
+          <polyline points="19 16 16 16 16 13"></polyline>
+        </svg>
+        Refresh
+      </button>
+    </nav>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar__header">
+          <span class="sidebar__title">Competitions</span>
+          <button id="all-competitions-button" class="sidebar__reset is-active" type="button">
+            All matches
+          </button>
+        </div>
+
+        <div id="country-tree" class="country-tree" aria-label="Countries and leagues"></div>
+      </aside>
+
+      <section class="content">
+        <div class="controlbar">
+          <div class="controlbar__right">
+            <label class="ctrl-field">
+              <span>Sort</span>
+              <select id="sort-select">
+                <option value="edge">Biggest edge</option>
+                <option value="arb">Arb first</option>
+                <option value="start">Kickoff</option>
+              </select>
+            </label>
+            <label class="ctrl-field">
+              <span>Rows</span>
+              <select id="limit-select">
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="all">All</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="statusbar">
+          <span id="results-summary">Loading comparisons...</span>
+          <span id="generated-at"></span>
+        </div>
+
+        <div id="selection-bar" class="selection-bar" hidden>
+          <div class="selection-bar__copy">
+            <span id="selection-kicker" class="selection-bar__kicker"></span>
+            <strong id="selection-title" class="selection-bar__title"></strong>
+          </div>
+          <button id="clear-selection-button" class="selection-bar__clear" type="button">
+            Clear
+          </button>
+        </div>
+
+        <main id="results" class="match-list" aria-live="polite"></main>
+      </section>
+    </div>
+
+    <template id="match-row-template">
+      <div class="match-row">
+        <div class="match-row__head">
+          <span class="match-row__time"></span>
+          <span class="match-row__teams"></span>
+          <span class="match-row__spacer"></span>
+          <button class="match-row__country" type="button"></button>
+          <button class="match-row__league" type="button"></button>
+          <span class="match-row__badges">
+            <span class="badge badge--arb" hidden>ARB</span>
+            <span class="badge badge--edge"></span>
+          </span>
+        </div>
+        <table class="odds-grid">
+          <thead>
+            <tr>
+              <th class="col-outcome"></th>
+              <th class="col-bk">Merkur</th>
+              <th class="col-bk">Pinnacle</th>
+              <th class="col-best">Best</th>
+              <th class="col-delta">Delta</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </template>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
