@@ -240,7 +240,8 @@ const server = createServer(async (request, response) => {
       const result = await createTeamMapping({
         bookmakerSlug: body.bookmakerSlug,
         sourceTeamName: body.sourceTeamName,
-        canonicalTeamId: body.canonicalTeamId,
+        canonicalCountryName: body.canonicalCountryName,
+        canonicalTeamName: body.canonicalTeamName,
       });
       sendJson(response, 200, result);
     } catch (error) {

@@ -115,18 +115,39 @@
         <section class="admin-section">
           <div class="admin-section__head">
             <h1>Team mapping</h1>
-            <p>Choose a bookmaker team and connect it to a canonical team.</p>
+            <p>Filter by league, select a Merkur and Pinnacle team, then choose or enter the canonical name.</p>
           </div>
-          <form id="team-mapping-form" class="admin-mapping-form">
+          <form id="team-mapping-form" class="admin-mapping-form admin-mapping-form--pair">
+            <div class="admin-field admin-field--full">
+              <span>Filter by mapped league</span>
+              <select id="team-league-filter" aria-label="Filter teams by mapped league">
+                <option value="">All leagues</option>
+              </select>
+            </div>
             <label class="admin-field">
-              <span>Bookmaker team</span>
-              <select name="sourceTeamKey" required></select>
+              <span>Merkur team</span>
+              <select name="merkurTeamKey" required></select>
             </label>
             <label class="admin-field">
-              <span>Canonical team</span>
-              <select name="canonicalTeamId" required></select>
+              <span>Pinnacle team</span>
+              <select name="pinnacleTeamKey" required></select>
             </label>
-            <button class="admin-button" type="submit">Save team mapping</button>
+            <div class="admin-field admin-field--full">
+              <span>Canonical name</span>
+              <div class="admin-canonical-suggest">
+                <button class="admin-button admin-button--ghost" type="button" data-use-team-name="merkur">Use Merkur name</button>
+                <button class="admin-button admin-button--ghost" type="button" data-use-team-name="pinnacle">Use Pinnacle name</button>
+              </div>
+            </div>
+            <label class="admin-field">
+              <span>Country (optional)</span>
+              <input type="text" name="canonicalCountryName" placeholder="e.g. Algeria" autocomplete="off" />
+            </label>
+            <label class="admin-field">
+              <span>Team name</span>
+              <input type="text" name="canonicalTeamName" placeholder="e.g. MC Alger" required autocomplete="off" />
+            </label>
+            <button class="admin-button admin-field--full admin-button--submit-pair" type="submit">Save team mapping</button>
           </form>
         </section>
       </section>

@@ -840,17 +840,21 @@ export async function listAdminMappingData({
       SELECT
         bookmaker_slug,
         source_team_name,
+        source_league_name,
+        source_country_name,
         MAX(last_seen_at) AS last_seen_at,
         SUM(seen_count) AS seen_count
       FROM (
-        SELECT bookmaker_slug, source_home_name AS source_team_name, last_seen_at, seen_count
+        SELECT bookmaker_slug, source_home_name AS source_team_name, source_league_name, source_country_name, last_seen_at, seen_count
         FROM admin_unmatched_events
+        WHERE status = 'open'
         UNION ALL
-        SELECT bookmaker_slug, source_away_name AS source_team_name, last_seen_at, seen_count
+        SELECT bookmaker_slug, source_away_name AS source_team_name, source_league_name, source_country_name, last_seen_at, seen_count
         FROM admin_unmatched_events
+        WHERE status = 'open'
       )
-      GROUP BY bookmaker_slug, source_team_name
-      ORDER BY bookmaker_slug ASC, source_team_name ASC
+      GROUP BY bookmaker_slug, source_team_name, source_league_name, source_country_name
+      ORDER BY bookmaker_slug ASC, source_league_name ASC, source_team_name ASC
       LIMIT ?
     `,
       args: [optionLimit],
@@ -985,16 +989,21 @@ export async function createLeagueMapping({
 export async function createTeamMapping({
   bookmakerSlug,
   sourceTeamName,
-  canonicalTeamId,
+  canonicalCountryName,
+  canonicalTeamName,
 }) {
   const client = await createTursoClient();
   const bookmakerId = await requireBookmakerId(client, bookmakerSlug);
+  const countryId = canonicalCountryName
+    ? await getOrCreateCountry(client, canonicalCountryName)
+    : null;
+  const canonicalTeamId = await getOrCreateTeam(client, countryId, canonicalTeamName);
 
   await upsertTeamMapping({
     client,
     bookmakerId,
     sourceTeamName: cleanDisplayText(sourceTeamName),
-    canonicalTeamId: Number(canonicalTeamId),
+    canonicalTeamId,
   });
 
   return { ok: true };

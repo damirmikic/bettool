@@ -16,6 +16,7 @@ const elements = {
   mappedTeams: document.querySelector("#mapped-teams"),
   leagueMappingForm: document.querySelector("#league-mapping-form"),
   teamMappingForm: document.querySelector("#team-mapping-form"),
+  teamLeagueFilter: document.querySelector("#team-league-filter"),
   tabs: Array.from(document.querySelectorAll(".admin-tab")),
   panels: Array.from(document.querySelectorAll(".admin-panel")),
   leagueTemplate: document.querySelector("#admin-league-template"),
@@ -29,6 +30,7 @@ const state = {
   sourceTeamOptions: [],
   canonicalLeagueOptions: [],
   canonicalTeamOptions: [],
+  mappedLeagues: [],
 };
 
 function pct(value) {
@@ -186,19 +188,78 @@ function renderMappingForms() {
     label: (option) => `${option.source_country_name ?? "Unknown country"} | ${option.source_league_name}`,
   });
 
-  fillSelect(elements.teamMappingForm.elements.sourceTeamKey, state.sourceTeamOptions, {
-    value: teamSourceKey,
-    label: (option) => `${option.bookmaker_slug} | ${option.source_team_name}`,
-  });
-  fillSelect(elements.teamMappingForm.elements.canonicalTeamId, state.canonicalTeamOptions, {
-    value: (option) => String(option.id),
-    label: canonicalTeamLabel,
-  });
+  populateTeamLeagueFilter();
+  applyTeamLeagueFilter();
 
   elements.leagueMappingForm.querySelector("button[type='submit']").disabled =
     merkurOptions.length === 0 || pinnacleOptions.length === 0;
+}
+
+function populateTeamLeagueFilter() {
+  const seen = new Set();
+  const filter = elements.teamLeagueFilter;
+  const current = filter.value;
+  filter.replaceChildren();
+  const all = document.createElement("option");
+  all.value = "";
+  all.textContent = "All leagues";
+  filter.append(all);
+
+  for (const m of state.mappedLeagues) {
+    const label = m.canonical_country_name
+      ? `${m.canonical_country_name} — ${m.canonical_league_name}`
+      : m.canonical_league_name;
+    if (seen.has(label)) continue;
+    seen.add(label);
+    const opt = document.createElement("option");
+    opt.value = m.canonical_league_name;
+    opt.textContent = label;
+    filter.append(opt);
+  }
+
+  if (current && [...filter.options].some((o) => o.value === current)) {
+    filter.value = current;
+  }
+}
+
+function applyTeamLeagueFilter() {
+  const canonicalLeagueName = elements.teamLeagueFilter.value;
+  const merkurAll = state.sourceTeamOptions.filter((o) => o.bookmaker_slug === "merkurxtip");
+  const pinnacleAll = state.sourceTeamOptions.filter((o) => o.bookmaker_slug === "pinnacle");
+
+  let merkurFiltered = merkurAll;
+  let pinnacleFiltered = pinnacleAll;
+
+  if (canonicalLeagueName) {
+    const merkurMapping = state.mappedLeagues.find(
+      (m) => m.canonical_league_name === canonicalLeagueName && m.bookmaker_slug === "merkurxtip",
+    );
+    const pinnacleMapping = state.mappedLeagues.find(
+      (m) => m.canonical_league_name === canonicalLeagueName && m.bookmaker_slug === "pinnacle",
+    );
+    if (merkurMapping) {
+      merkurFiltered = merkurAll.filter((t) => t.source_league_name === merkurMapping.source_league_name);
+    }
+    if (pinnacleMapping) {
+      pinnacleFiltered = pinnacleAll.filter((t) => t.source_league_name === pinnacleMapping.source_league_name);
+    }
+    const anyMapping = merkurMapping || pinnacleMapping;
+    if (anyMapping) {
+      elements.teamMappingForm.elements.canonicalCountryName.value = anyMapping.canonical_country_name ?? "";
+    }
+  }
+
+  fillSelect(elements.teamMappingForm.elements.merkurTeamKey, merkurFiltered, {
+    value: teamSourceKey,
+    label: (o) => o.source_team_name,
+  });
+  fillSelect(elements.teamMappingForm.elements.pinnacleTeamKey, pinnacleFiltered, {
+    value: teamSourceKey,
+    label: (o) => o.source_team_name,
+  });
+
   elements.teamMappingForm.querySelector("button[type='submit']").disabled =
-    state.sourceTeamOptions.length === 0 || state.canonicalTeamOptions.length === 0;
+    merkurFiltered.length === 0 || pinnacleFiltered.length === 0;
 }
 
 function renderLeagues(leagues) {
@@ -449,6 +510,7 @@ async function loadAdminData() {
   state.sourceTeamOptions = mappings.sourceTeamOptions ?? [];
   state.canonicalLeagueOptions = mappings.canonicalLeagueOptions ?? [];
   state.canonicalTeamOptions = mappings.canonicalTeamOptions ?? [];
+  state.mappedLeagues = mappings.mappedLeagues ?? [];
 
   renderLeagues(review.unmatchedLeagues);
   renderEvents(review.unmatchedEvents);
@@ -496,15 +558,38 @@ elements.leagueMappingForm.addEventListener("submit", async (event) => {
   setActiveTab("mapped-leagues");
 });
 
+elements.teamLeagueFilter.addEventListener("change", applyTeamLeagueFilter);
+
+elements.teamMappingForm.querySelectorAll("[data-use-team-name]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const key = btn.dataset.useTeamName === "merkur"
+      ? elements.teamMappingForm.elements.merkurTeamKey.value
+      : elements.teamMappingForm.elements.pinnacleTeamKey.value;
+    if (!key) return;
+    const parsed = JSON.parse(key);
+    elements.teamMappingForm.elements.canonicalTeamName.value = parsed.sourceTeamName ?? "";
+  });
+});
+
 elements.teamMappingForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const source = JSON.parse(elements.teamMappingForm.elements.sourceTeamKey.value);
+  const merkur = JSON.parse(elements.teamMappingForm.elements.merkurTeamKey.value);
+  const pinnacle = JSON.parse(elements.teamMappingForm.elements.pinnacleTeamKey.value);
+  const canonicalCountryName = elements.teamMappingForm.elements.canonicalCountryName.value.trim() || null;
+  const canonicalTeamName = elements.teamMappingForm.elements.canonicalTeamName.value.trim();
 
   await postJson("/api/admin/team-mappings", {
-    bookmakerSlug: source.bookmakerSlug,
-    sourceTeamName: source.sourceTeamName,
-    canonicalTeamId: Number(elements.teamMappingForm.elements.canonicalTeamId.value),
+    bookmakerSlug: merkur.bookmakerSlug,
+    sourceTeamName: merkur.sourceTeamName,
+    canonicalCountryName,
+    canonicalTeamName,
+  });
+  await postJson("/api/admin/team-mappings", {
+    bookmakerSlug: pinnacle.bookmakerSlug,
+    sourceTeamName: pinnacle.sourceTeamName,
+    canonicalCountryName,
+    canonicalTeamName,
   });
 
   await loadAdminData();
