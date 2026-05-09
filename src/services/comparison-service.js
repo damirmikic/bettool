@@ -87,6 +87,31 @@ function countDistinctLeagues(events) {
   return new Set(events.map((event) => `${event.country ?? ""}::${event.league ?? ""}`)).size;
 }
 
+function resolveMappedCountry(row) {
+  const canonicalCountry = row.canonical_country_name ?? null;
+  const sourceCountry = row.source_country_name ?? null;
+  const canonicalLeague = row.canonical_league_name ?? null;
+
+  if (!canonicalCountry) {
+    return sourceCountry;
+  }
+
+  const normalizedCountry = String(canonicalCountry).trim().toLowerCase();
+  const normalizedLeague = String(canonicalLeague ?? "").trim().toLowerCase();
+
+  if (normalizedLeague) {
+    if (normalizedCountry === normalizedLeague) {
+      return sourceCountry;
+    }
+
+    if (normalizedCountry.includes(normalizedLeague)) {
+      return sourceCountry;
+    }
+  }
+
+  return canonicalCountry;
+}
+
 function buildLeagueMappingIndex(rows) {
   const index = new Map();
 
@@ -98,7 +123,7 @@ function buildLeagueMappingIndex(rows) {
     ].join("::");
 
     index.set(key, {
-      country: row.canonical_country_name ?? row.source_country_name ?? null,
+      country: resolveMappedCountry(row),
       league: row.canonical_league_name ?? row.source_league_name ?? null,
     });
   }

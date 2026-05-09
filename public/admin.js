@@ -282,7 +282,7 @@ function renderLeagues(leagues) {
 
     const form = card.querySelector(".admin-form--league");
     form.elements.canonicalCountryName.value =
-      league.suggestion?.canonicalCountryName ?? league.source_country_name ?? "";
+      league.suggestion?.canonicalCountryName ?? "";
     form.elements.canonicalLeagueName.value =
       league.suggestion?.canonicalLeagueName ?? league.source_league_name ?? "";
     form.addEventListener("submit", async (event) => {
@@ -312,7 +312,6 @@ function renderLeagues(leagues) {
       useBtn.className = "admin-button admin-button--ghost cross-match__btn";
       useBtn.textContent = "Use name";
       useBtn.addEventListener("click", () => {
-        form.elements.canonicalCountryName.value = crossMatch.sourceCountryName ?? "";
         form.elements.canonicalLeagueName.value = crossMatch.sourceLeagueName;
       });
       const pairBtn = document.createElement("button");
@@ -370,7 +369,6 @@ function renderEvents(events) {
     form.elements.canonicalCountryName.value =
       unmatchedEvent.suggestion?.home?.canonicalCountryName ??
       unmatchedEvent.suggestion?.away?.canonicalCountryName ??
-      unmatchedEvent.source_country_name ??
       "";
     form.elements.canonicalHomeName.value =
       unmatchedEvent.suggestion?.home?.canonicalTeamName ?? unmatchedEvent.source_home_name ?? "";
@@ -531,7 +529,6 @@ elements.leagueMappingForm.querySelectorAll("[data-use-name]").forEach((btn) => 
       : elements.leagueMappingForm.elements.pinnacleLeagueKey.value;
     if (!key) return;
     const parsed = JSON.parse(key);
-    elements.leagueMappingForm.elements.canonicalCountryName.value = parsed.sourceCountryName ?? "";
     elements.leagueMappingForm.elements.canonicalLeagueName.value = parsed.sourceLeagueName ?? "";
   });
 });

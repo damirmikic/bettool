@@ -6,9 +6,13 @@ const state = {
   limit: "50",
 };
 
+const AUTO_REFRESH_MS = 45_000;
+const ACTIVE_REFRESH_POLL_MS = 3_000;
+
 const store = {
   snapshot: null,
   pollTimer: null,
+  renderedRows: new Map(),
 };
 
 const el = {
@@ -60,6 +64,42 @@ function numericLimit(rawLimit) {
 
   const parsed = Number(rawLimit);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 50;
+}
+
+function getRowId(row) {
+  return [
+    row.key?.home ?? "",
+    row.key?.away ?? "",
+    row.country ?? "",
+    row.league ?? "",
+    row.startTime ?? "",
+  ].join("::");
+}
+
+function getRowSignature(row) {
+  return JSON.stringify({
+    country: row.country ?? null,
+    league: row.league ?? null,
+    startTime: row.startTime ?? null,
+    isArbitrage: row.isArbitrage ?? false,
+    arbitrageMargin: row.arbitrageMargin ?? null,
+    maxDeltaAbs: row.maxDeltaAbs ?? null,
+    maxValuePercentage: row.maxValuePercentage ?? null,
+    shinZ: row.shinZ ?? null,
+    outcomes: Array.isArray(row.outcomes)
+      ? row.outcomes.map((outcome) => ({
+          label: outcome.label,
+          leftPrice: outcome.leftPrice ?? null,
+          rightPrice: outcome.rightPrice ?? null,
+          bestPrice: outcome.bestPrice ?? null,
+          noVigPrice: outcome.noVigPrice ?? null,
+          noVigProbability: outcome.noVigProbability ?? null,
+          valuePercentage: outcome.valuePercentage ?? null,
+          bestBookmaker: outcome.bestBookmaker ?? null,
+          delta: outcome.delta ?? null,
+        }))
+      : [],
+  });
 }
 
 function matchesFilters(row) {
@@ -233,10 +273,123 @@ function renderSelectionBar(selectedCountry, selectedLeague, totalRows) {
   el.selectionTitle.textContent = `${selectedCountry} · ${totalRows} events`;
 }
 
-function renderRows(rows) {
-  el.results.replaceChildren();
+function createMatchCard() {
+  return el.template.content.firstElementChild.cloneNode(true);
+}
 
+function updateMatchCard(card, row, { highlight = false } = {}) {
+  card.classList.toggle("match-row--arb", Boolean(row.isArbitrage));
+  card.classList.toggle("match-row--updated", highlight);
+  if (highlight) {
+    clearTimeout(card._highlightTimer);
+    card._highlightTimer = setTimeout(() => {
+      card.classList.remove("match-row--updated");
+    }, 1800);
+  }
+
+  card.querySelector(".match-row__time").textContent = fmtKickoff(row.startTime);
+  card.querySelector(".match-row__teams").textContent = `${row.key.home} vs ${row.key.away}`;
+
+  const countryButton = card.querySelector(".match-row__country");
+  const leagueButton = card.querySelector(".match-row__league");
+
+  countryButton.textContent = row.country ?? "";
+  countryButton.hidden = !row.country;
+  countryButton.onclick = () => {
+    state.country = row.country ?? "";
+    state.league = "";
+    applyFilters();
+  };
+
+  leagueButton.textContent = row.league ?? "";
+  leagueButton.hidden = !row.league;
+  leagueButton.onclick = () => {
+    state.country = row.country ?? "";
+    state.league = row.league ?? "";
+    applyFilters();
+  };
+
+  const edgeBadge = card.querySelector(".badge--edge");
+  if (row.maxDeltaAbs != null && row.maxDeltaAbs > 0) {
+    edgeBadge.hidden = false;
+    if (row.maxValuePercentage != null) {
+      edgeBadge.textContent = `VALUE ${row.maxValuePercentage >= 0 ? "+" : ""}${row.maxValuePercentage.toFixed(2)}%`;
+    } else {
+      edgeBadge.textContent =
+        row.shinZ != null ? `EDGE +${fmt(row.maxDeltaAbs)} · Z ${fmt(row.shinZ)}` : `EDGE +${fmt(row.maxDeltaAbs)}`;
+    }
+  } else {
+    edgeBadge.hidden = row.shinZ == null;
+    edgeBadge.textContent = row.shinZ != null ? `SHIN Z ${fmt(row.shinZ)}` : "";
+  }
+
+  const arbBadge = card.querySelector(".badge--arb");
+  if (row.isArbitrage) {
+    arbBadge.hidden = false;
+    arbBadge.textContent =
+      row.arbitrageMargin != null ? `ARB ${row.arbitrageMargin}%` : "ARB";
+  } else {
+    arbBadge.hidden = true;
+    arbBadge.textContent = "ARB";
+  }
+
+  const tbody = card.querySelector("tbody");
+  tbody.replaceChildren();
+
+  for (const outcome of row.outcomes) {
+    const tr = document.createElement("tr");
+
+    if (row.isArbitrage) {
+      tr.classList.add("row--arb-outcome");
+    }
+
+    const merkurBest = outcome.bestBookmaker === "MerkurXTip";
+    const pinnacleBest = outcome.bestBookmaker === "Pinnacle";
+    const delta = outcome.delta;
+    const valuePercentage = outcome.valuePercentage;
+
+    let deltaClass = "cell--delta-zero";
+    let deltaText = "-";
+    let valueClass = "cell--value-zero";
+    let valueText = "-";
+
+    if (delta != null) {
+      deltaClass =
+        delta > 0 ? "cell--delta-pos" : delta < 0 ? "cell--delta-neg" : "cell--delta-zero";
+      deltaText = `${delta >= 0 ? "+" : ""}${fmt(delta)}`;
+    }
+
+    if (valuePercentage != null) {
+      valueClass =
+        valuePercentage > 0
+          ? "cell--value-pos"
+          : valuePercentage < 0
+            ? "cell--value-neg"
+            : "cell--value-zero";
+      valueText = `${valuePercentage >= 0 ? "+" : ""}${valuePercentage.toFixed(2)}%`;
+    }
+
+    const labelMap = { "1": "HOME", X: "DRAW", "2": "AWAY" };
+    const label = labelMap[outcome.label] ?? outcome.label;
+
+    tr.innerHTML = `
+      <td>${label}</td>
+      <td class="${merkurBest ? "cell--best-left" : ""}">${fmt(outcome.leftPrice)}</td>
+      <td class="${pinnacleBest ? "cell--best-right" : ""}">${fmt(outcome.rightPrice)}</td>
+      <td class="cell--best-price">${outcome.bestPrice != null ? fmt(outcome.bestPrice) : "-"}</td>
+      <td class="cell--no-vig">${outcome.noVigPrice != null ? fmt(outcome.noVigPrice) : "-"}</td>
+      <td class="${valueClass}">${valueText}</td>
+      <td class="${deltaClass}">${deltaText}</td>
+    `;
+
+    tbody.append(tr);
+  }
+}
+
+function renderRows(rows, { incremental = false } = {}) {
   if (rows.length === 0) {
+    store.renderedRows.clear();
+    el.results.replaceChildren();
     const empty = document.createElement("p");
     empty.className = "empty-state";
     empty.textContent = "No matches fit the current filters.";
@@ -244,105 +397,43 @@ function renderRows(rows) {
     return;
   }
 
+  const nextRenderedRows = new Map();
   const fragment = document.createDocumentFragment();
 
   for (const row of rows) {
-    const card = el.template.content.firstElementChild.cloneNode(true);
+    const rowId = getRowId(row);
+    const signature = getRowSignature(row);
+    const existing = incremental ? store.renderedRows.get(rowId) : null;
+    const card = existing?.card ?? createMatchCard();
+    const hasChanged = !existing || existing.signature !== signature;
 
-    if (row.isArbitrage) {
-      card.classList.add("match-row--arb");
+    if (hasChanged) {
+      updateMatchCard(card, row, {
+        highlight: incremental && Boolean(existing),
+      });
     }
 
-    card.querySelector(".match-row__time").textContent = fmtKickoff(row.startTime);
-    card.querySelector(".match-row__teams").textContent = `${row.key.home} vs ${row.key.away}`;
-
-    const countryButton = card.querySelector(".match-row__country");
-    const leagueButton = card.querySelector(".match-row__league");
-
-    countryButton.textContent = row.country ?? "";
-    countryButton.hidden = !row.country;
-    countryButton.addEventListener("click", () => {
-      state.country = row.country ?? "";
-      state.league = "";
-      applyFilters();
-    });
-
-    leagueButton.textContent = row.league ?? "";
-    leagueButton.hidden = !row.league;
-    leagueButton.addEventListener("click", () => {
-      state.country = row.country ?? "";
-      state.league = row.league ?? "";
-      applyFilters();
-    });
-
-    const edgeBadge = card.querySelector(".badge--edge");
-    if (row.maxDeltaAbs != null && row.maxDeltaAbs > 0) {
-      edgeBadge.textContent = `EDGE +${fmt(row.maxDeltaAbs)}`;
-    } else {
-      edgeBadge.hidden = true;
-    }
-
-    const arbBadge = card.querySelector(".badge--arb");
-    if (row.isArbitrage) {
-      arbBadge.hidden = false;
-      arbBadge.textContent =
-        row.arbitrageMargin != null ? `ARB ${row.arbitrageMargin}%` : "ARB";
-    }
-
-    const tbody = card.querySelector("tbody");
-
-    for (const outcome of row.outcomes) {
-      const tr = document.createElement("tr");
-
-      if (row.isArbitrage) {
-        tr.classList.add("row--arb-outcome");
-      }
-
-      const merkurBest = outcome.bestBookmaker === "MerkurXTip";
-      const pinnacleBest = outcome.bestBookmaker === "Pinnacle";
-      const delta = outcome.delta;
-
-      let deltaClass = "cell--delta-zero";
-      let deltaText = "-";
-
-      if (delta != null) {
-        deltaClass =
-          delta > 0 ? "cell--delta-pos" : delta < 0 ? "cell--delta-neg" : "cell--delta-zero";
-        deltaText = `${delta >= 0 ? "+" : ""}${fmt(delta)}`;
-      }
-
-      const labelMap = { "1": "HOME", X: "DRAW", "2": "AWAY" };
-      const label = labelMap[outcome.label] ?? outcome.label;
-
-      tr.innerHTML = `
-        <td>${label}</td>
-        <td class="${merkurBest ? "cell--best-left" : ""}">${fmt(outcome.leftPrice)}</td>
-        <td class="${pinnacleBest ? "cell--best-right" : ""}">${fmt(outcome.rightPrice)}</td>
-        <td class="cell--best-price">${outcome.bestPrice != null ? fmt(outcome.bestPrice) : "-"}</td>
-        <td class="${deltaClass}">${deltaText}</td>
-      `;
-
-      tbody.append(tr);
-    }
-
+    nextRenderedRows.set(rowId, { card, signature });
     fragment.append(card);
   }
 
-  el.results.append(fragment);
+  store.renderedRows = nextRenderedRows;
+  el.results.replaceChildren(fragment);
 }
 
 function scheduleProgressPolling() {
   clearTimeout(store.pollTimer);
 
-  if (!store.snapshot?.progress?.isRefreshing) {
-    return;
-  }
+  const delay = store.snapshot?.progress?.isRefreshing
+    ? ACTIVE_REFRESH_POLL_MS
+    : AUTO_REFRESH_MS;
 
   store.pollTimer = setTimeout(() => {
-    fetchSnapshot({ silent: true }).catch((error) => {
+    fetchSnapshot({ silent: true, incremental: true }).catch((error) => {
       el.resultsSummary.textContent = error.message;
+      scheduleProgressPolling();
     });
-  }, 3000);
+  }, delay);
 }
 
 function buildProgressText(progress) {
@@ -364,7 +455,7 @@ function buildProgressText(progress) {
   return `Loaded ${loaded}/${total} leagues.`;
 }
 
-function renderSnapshot(projected) {
+function renderSnapshot(projected, { incremental = false } = {}) {
   const counts = projected.counts ?? {};
   const summary = projected.summary ?? {};
   const rows = Array.isArray(projected.rows) ? projected.rows : [];
@@ -382,11 +473,11 @@ function renderSnapshot(projected) {
 
   renderCountryTree(countries, state.country, state.league);
   renderSelectionBar(state.country, state.league, projected.totalRows ?? rows.length);
-  renderRows(rows);
+  renderRows(rows, { incremental });
   scheduleProgressPolling();
 }
 
-function applyFilters() {
+function applyFilters({ incremental = false } = {}) {
   if (!store.snapshot) {
     return;
   }
@@ -406,10 +497,10 @@ function applyFilters() {
     rows: visibleRows,
     totalRows: filteredRows.length,
     countries: buildCountryTree(filteredRows),
-  });
+  }, { incremental });
 }
 
-async function fetchSnapshot({ silent = false } = {}) {
+async function fetchSnapshot({ silent = false, incremental = false } = {}) {
   if (!silent) {
     el.resultsSummary.textContent = "Loading...";
   }
@@ -429,7 +520,7 @@ async function fetchSnapshot({ silent = false } = {}) {
     comparisons: Array.isArray(data.rows) ? data.rows : [],
   };
 
-  applyFilters();
+  applyFilters({ incremental });
 }
 
 async function refreshFeed() {

@@ -821,41 +821,87 @@ export async function listAdminMappingData({
     `),
     client.execute({
       sql: `
+      WITH grouped AS (
+        SELECT
+          bookmaker_slug,
+          source_country_name,
+          source_league_name,
+          MAX(last_seen_at) AS last_seen_at,
+          SUM(seen_count) AS seen_count
+        FROM admin_unmatched_leagues
+        WHERE status = 'open'
+        GROUP BY bookmaker_slug, source_country_name, source_league_name
+      ),
+      ranked AS (
+        SELECT
+          bookmaker_slug,
+          source_country_name,
+          source_league_name,
+          last_seen_at,
+          seen_count,
+          ROW_NUMBER() OVER (
+            PARTITION BY bookmaker_slug
+            ORDER BY source_country_name ASC, source_league_name ASC
+          ) AS bookmaker_row_num
+        FROM grouped
+      )
       SELECT
         bookmaker_slug,
         source_country_name,
         source_league_name,
-        MAX(last_seen_at) AS last_seen_at,
-        SUM(seen_count) AS seen_count
-      FROM admin_unmatched_leagues
-      WHERE status = 'open'
-      GROUP BY bookmaker_slug, source_country_name, source_league_name
+        last_seen_at,
+        seen_count
+      FROM ranked
+      WHERE bookmaker_row_num <= ?
       ORDER BY bookmaker_slug ASC, source_country_name ASC, source_league_name ASC
-      LIMIT ?
     `,
       args: [optionLimit],
     }),
     client.execute({
       sql: `
+      WITH grouped AS (
+        SELECT
+          bookmaker_slug,
+          source_team_name,
+          source_league_name,
+          source_country_name,
+          MAX(last_seen_at) AS last_seen_at,
+          SUM(seen_count) AS seen_count
+        FROM (
+          SELECT bookmaker_slug, source_home_name AS source_team_name, source_league_name, source_country_name, last_seen_at, seen_count
+          FROM admin_unmatched_events
+          WHERE status = 'open'
+          UNION ALL
+          SELECT bookmaker_slug, source_away_name AS source_team_name, source_league_name, source_country_name, last_seen_at, seen_count
+          FROM admin_unmatched_events
+          WHERE status = 'open'
+        )
+        GROUP BY bookmaker_slug, source_team_name, source_league_name, source_country_name
+      ),
+      ranked AS (
+        SELECT
+          bookmaker_slug,
+          source_team_name,
+          source_league_name,
+          source_country_name,
+          last_seen_at,
+          seen_count,
+          ROW_NUMBER() OVER (
+            PARTITION BY bookmaker_slug
+            ORDER BY source_league_name ASC, source_team_name ASC
+          ) AS bookmaker_row_num
+        FROM grouped
+      )
       SELECT
         bookmaker_slug,
         source_team_name,
         source_league_name,
         source_country_name,
-        MAX(last_seen_at) AS last_seen_at,
-        SUM(seen_count) AS seen_count
-      FROM (
-        SELECT bookmaker_slug, source_home_name AS source_team_name, source_league_name, source_country_name, last_seen_at, seen_count
-        FROM admin_unmatched_events
-        WHERE status = 'open'
-        UNION ALL
-        SELECT bookmaker_slug, source_away_name AS source_team_name, source_league_name, source_country_name, last_seen_at, seen_count
-        FROM admin_unmatched_events
-        WHERE status = 'open'
-      )
-      GROUP BY bookmaker_slug, source_team_name, source_league_name, source_country_name
+        last_seen_at,
+        seen_count
+      FROM ranked
+      WHERE bookmaker_row_num <= ?
       ORDER BY bookmaker_slug ASC, source_league_name ASC, source_team_name ASC
-      LIMIT ?
     `,
       args: [optionLimit],
     }),

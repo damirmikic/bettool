@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BetTool Value</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <nav class="topbar">
+      <div class="topbar__brand">
+        <span class="topbar__logo">◆</span>
+        <span class="topbar__name">BetTool Value</span>
+      </div>
+
+      <a class="topbar__link" href="/">Odds</a>
+      <a class="topbar__link topbar__link--active" href="/value.html">Value</a>
+      <a class="topbar__link" href="/admin.html">Admin</a>
+
+      <div class="topbar__search">
+        <svg class="search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="8.5" cy="8.5" r="5.5"></circle>
+          <path d="M15 15l-3-3"></path>
+        </svg>
+        <input id="value-search-input" type="search" placeholder="Search teams or leagues..." autocomplete="off" />
+      </div>
+
+      <div class="topbar__stats">
+        <div class="stat">
+          <span class="stat__label">Matches</span>
+          <strong class="stat__value" id="value-match-count">-</strong>
+        </div>
+        <div class="stat stat--arb">
+          <span class="stat__label">Outcomes</span>
+          <strong class="stat__value" id="value-outcome-count">-</strong>
+        </div>
+        <div class="stat">
+          <span class="stat__label">Avg Value</span>
+          <strong class="stat__value" id="value-average">-</strong>
+        </div>
+      </div>
+
+      <button id="value-refresh-button" class="btn-refresh" type="button">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M4 4a8 8 0 0112.94 3"></path>
+          <path d="M16 16a8 8 0 01-12.94-3"></path>
+          <polyline points="1 4 4 4 4 7"></polyline>
+          <polyline points="19 16 16 16 16 13"></polyline>
+        </svg>
+        Refresh
+      </button>
+    </nav>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar__header">
+          <span class="sidebar__title">Value Competitions</span>
+          <button id="value-all-button" class="sidebar__reset is-active" type="button">
+            All value bets
+          </button>
+        </div>
+
+        <div id="value-country-tree" class="country-tree" aria-label="Countries and leagues"></div>
+      </aside>
+
+      <section class="content">
+        <div class="controlbar">
+          <div class="controlbar__right">
+            <label class="ctrl-field">
+              <span>Sort</span>
+              <select id="value-sort-select">
+                <option value="value">Highest value</option>
+                <option value="start">Kickoff</option>
+              </select>
+            </label>
+            <label class="ctrl-field">
+              <span>Min Value</span>
+              <select id="value-min-select">
+                <option value="0" selected>0%</option>
+                <option value="1">1%</option>
+                <option value="2">2%</option>
+                <option value="3">3%</option>
+                <option value="5">5%</option>
+              </select>
+            </label>
+            <label class="ctrl-field">
+              <span>Rows</span>
+              <select id="value-limit-select">
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="all">All</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="statusbar">
+          <span id="value-results-summary">Loading value bets...</span>
+          <span id="value-generated-at"></span>
+        </div>
+
+        <div id="value-selection-bar" class="selection-bar" hidden>
+          <div class="selection-bar__copy">
+            <span id="value-selection-kicker" class="selection-bar__kicker"></span>
+            <strong id="value-selection-title" class="selection-bar__title"></strong>
+          </div>
+          <button id="value-clear-selection-button" class="selection-bar__clear" type="button">
+            Clear
+          </button>
+        </div>
+
+        <main id="value-results" class="value-list" aria-live="polite"></main>
+      </section>
+    </div>
+
+    <template id="value-card-template">
+      <article class="value-card">
+        <div class="value-card__head">
+          <div class="value-card__title-group">
+            <span class="value-card__time"></span>
+            <strong class="value-card__teams"></strong>
+          </div>
+          <div class="value-card__tags">
+            <button class="match-row__country value-card__country" type="button"></button>
+            <button class="match-row__league value-card__league" type="button"></button>
+            <span class="badge badge--edge value-card__value-badge"></span>
+          </div>
+        </div>
+
+        <table class="value-grid">
+          <thead>
+            <tr>
+              <th>Outcome</th>
+              <th>Book</th>
+              <th>Offered</th>
+              <th>No-Vig</th>
+              <th>Fair %</th>
+              <th>Value %</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </article>
+    </template>
+
+    <script type="module" src="/value.js"></script>
+  </body>
+</html>

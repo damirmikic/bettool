@@ -29,7 +29,7 @@ export function formatComparisonTable(comparisons) {
 
     for (const outcome of comparison.outcomes) {
       lines.push(
-        `  ${outcome.label}: MerkurXTip=${renderPrice(outcome.leftPrice)} Pinnacle=${renderPrice(outcome.rightPrice)} Best=${outcome.bestBookmaker} Delta=${renderPrice(outcome.delta)}`,
+        `  ${outcome.label}: MerkurXTip=${renderPrice(outcome.leftPrice)} Pinnacle=${renderPrice(outcome.rightPrice)} Best=${outcome.bestBookmaker} NoVig=${renderPrice(outcome.noVigPrice)} Value=${renderPrice(outcome.valuePercentage)}% Delta=${renderPrice(outcome.delta)}`,
       );
     }
 
