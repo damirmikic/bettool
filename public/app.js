@@ -39,6 +39,31 @@ function fmt(value) {
   return value == null ? "-" : Number(value).toFixed(3);
 }
 
+function calculateMarketPayout(prices) {
+  const validPrices = prices.filter(
+    (price) => price != null && Number.isFinite(Number(price)) && Number(price) > 1,
+  );
+
+  if (validPrices.length !== prices.length || validPrices.length === 0) {
+    return null;
+  }
+
+  const bookPercentage = validPrices.reduce((sum, price) => sum + 1 / Number(price), 0) * 100;
+
+  return {
+    payoutPercentage: 10000 / bookPercentage,
+    marginPercentage: bookPercentage - 100,
+  };
+}
+
+function fmtPayout(value) {
+  if (!value) {
+    return "-";
+  }
+
+  return `${value.payoutPercentage.toFixed(2)}% (${value.marginPercentage.toFixed(2)}%)`;
+}
+
 function fmtKickoff(value) {
   if (!value) {
     return "TBD";
@@ -338,6 +363,13 @@ function updateMatchCard(card, row, { highlight = false } = {}) {
   const tbody = card.querySelector("tbody");
   tbody.replaceChildren();
 
+  const merkurPayout = calculateMarketPayout(
+    row.outcomes.map((outcome) => outcome.leftPrice),
+  );
+  const pinnaclePayout = calculateMarketPayout(
+    row.outcomes.map((outcome) => outcome.rightPrice),
+  );
+
   for (const outcome of row.outcomes) {
     const tr = document.createElement("tr");
 
@@ -405,6 +437,16 @@ function updateMatchCard(card, row, { highlight = false } = {}) {
 
     tbody.append(tr);
   }
+
+  const payoutRow = document.createElement("tr");
+  payoutRow.className = "row--payout";
+  payoutRow.innerHTML = `
+    <td>PAYOUT</td>
+    <td>${fmtPayout(merkurPayout)}</td>
+    <td>${fmtPayout(pinnaclePayout)}</td>
+    <td colspan="4"></td>
+  `;
+  tbody.append(payoutRow);
 }
 
 function renderRows(rows, { incremental = false } = {}) {

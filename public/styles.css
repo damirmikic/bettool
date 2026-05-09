@@ -760,6 +760,25 @@ body {
   background: rgba(255, 214, 0, 0.04);
 }
 
+.row--payout td {
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.row--payout td:nth-child(2),
+.row--payout td:nth-child(3) {
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.row--payout:hover {
+  background: transparent;
+}
+
 .empty-state {
   padding: 4rem 1rem;
   color: var(--muted);
