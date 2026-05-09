@@ -16,6 +16,23 @@ let cache = {
   firstReady: null,
 };
 
+function withRefreshingProgress(snapshot) {
+  if (!snapshot) {
+    return null;
+  }
+
+  return {
+    ...snapshot,
+    progress: {
+      loadedLeagueCount: snapshot.progress?.loadedLeagueCount ?? 0,
+      totalLeagueCount: snapshot.progress?.totalLeagueCount ?? 0,
+      batchSize: snapshot.progress?.batchSize ?? 0,
+      isPartial: snapshot.progress?.isPartial ?? false,
+      isRefreshing: true,
+    },
+  };
+}
+
 function numericLimit(rawLimit, fallback) {
   if (rawLimit == null || rawLimit === "") {
     return fallback;
@@ -81,6 +98,92 @@ function buildCountryLeagueTree(comparisons) {
         .sort((left, right) => left.name.localeCompare(right.name)),
     }))
     .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function buildComparisonRowKey(comparison) {
+  return [
+    comparison.key?.home ?? "",
+    comparison.key?.away ?? "",
+    comparison.country ?? "",
+    comparison.league ?? "",
+    comparison.startTime ?? "",
+  ].join("::");
+}
+
+function hasOutcomeFieldChanged(currentValue, previousValue) {
+  return (currentValue ?? null) !== (previousValue ?? null);
+}
+
+function annotateComparisonChanges(comparisons, previousComparisons = []) {
+  const previousByKey = new Map(
+    previousComparisons.map((comparison) => [buildComparisonRowKey(comparison), comparison]),
+  );
+
+  return comparisons.map((comparison) => {
+    const previousComparison = previousByKey.get(buildComparisonRowKey(comparison)) ?? null;
+    let changedOutcomeCount = 0;
+
+    const outcomes = comparison.outcomes.map((outcome) => {
+      const previousOutcome =
+        previousComparison?.outcomes?.find((candidate) => candidate.label === outcome.label) ??
+        null;
+
+      if (!previousOutcome) {
+        return {
+          ...outcome,
+          hasChanged: false,
+          changeFlags: {
+            leftPrice: false,
+            rightPrice: false,
+            bestPrice: false,
+            noVigPrice: false,
+            valuePercentage: false,
+            delta: false,
+          },
+          previousState: null,
+        };
+      }
+
+      const changeFlags = {
+        leftPrice: hasOutcomeFieldChanged(outcome.leftPrice, previousOutcome.leftPrice),
+        rightPrice: hasOutcomeFieldChanged(outcome.rightPrice, previousOutcome.rightPrice),
+        bestPrice: hasOutcomeFieldChanged(outcome.bestPrice, previousOutcome.bestPrice),
+        noVigPrice: hasOutcomeFieldChanged(outcome.noVigPrice, previousOutcome.noVigPrice),
+        valuePercentage: hasOutcomeFieldChanged(
+          outcome.valuePercentage,
+          previousOutcome.valuePercentage,
+        ),
+        delta: hasOutcomeFieldChanged(outcome.delta, previousOutcome.delta),
+      };
+
+      const hasChanged = Object.values(changeFlags).some(Boolean);
+
+      if (hasChanged) {
+        changedOutcomeCount += 1;
+      }
+
+      return {
+        ...outcome,
+        hasChanged,
+        changeFlags,
+        previousState: {
+          leftPrice: previousOutcome.leftPrice ?? null,
+          rightPrice: previousOutcome.rightPrice ?? null,
+          bestPrice: previousOutcome.bestPrice ?? null,
+          noVigPrice: previousOutcome.noVigPrice ?? null,
+          valuePercentage: previousOutcome.valuePercentage ?? null,
+          delta: previousOutcome.delta ?? null,
+        },
+      };
+    });
+
+    return {
+      ...comparison,
+      hasChanged: changedOutcomeCount > 0,
+      changedOutcomeCount,
+      outcomes,
+    };
+  });
 }
 
 function countDistinctLeagues(events) {
@@ -222,6 +325,8 @@ function buildUnmatchedEventRows(events) {
 }
 
 async function buildComparisonData() {
+  const previousSnapshot = cache.data ? withRefreshingProgress(cache.data) : null;
+  const previousComparisons = cache.data?.comparisons ?? [];
   const [merkurEventsRaw, mappingsResult] = await Promise.all([
     fetchMerkurSoccerOffer(),
     loadAdminMappings().catch((error) => {
@@ -236,21 +341,23 @@ async function buildComparisonData() {
   ]);
 
   const merkurEvents = applyAdminMappings(merkurEventsRaw, mappingsResult);
-  let latestSnapshot = createComparisonSnapshot({
-    merkurEvents,
-    pinnacleEvents: [],
-    comparisonResult: {
-      comparisons: [],
-      unmatchedLeftEvents: merkurEvents,
-      unmatchedRightEvents: [],
-    },
-    progress: {
-      loadedLeagueCount: 0,
-      totalLeagueCount: 0,
-      isComplete: false,
-      isRefreshing: true,
-    },
-  });
+  let latestSnapshot = previousSnapshot ??
+    createComparisonSnapshot({
+      merkurEvents,
+      pinnacleEvents: [],
+      comparisonResult: {
+        comparisons: [],
+        unmatchedLeftEvents: merkurEvents,
+        unmatchedRightEvents: [],
+      },
+      progress: {
+        loadedLeagueCount: 0,
+        totalLeagueCount: 0,
+        isComplete: false,
+        isRefreshing: true,
+      },
+      previousComparisons,
+    });
 
   const firstReady = createDeferred();
   cache.firstReady = firstReady.promise;
@@ -276,6 +383,7 @@ async function buildComparisonData() {
             ...progress,
             isRefreshing: !progress.isComplete,
           },
+          previousComparisons,
         });
 
         cache.data = latestSnapshot;
@@ -344,8 +452,17 @@ function createComparisonSnapshot({
   pinnacleEvents,
   comparisonResult,
   progress,
+  previousComparisons = [],
 }) {
-  const comparisons = comparisonResult.comparisons;
+  const comparisons = annotateComparisonChanges(
+    comparisonResult.comparisons,
+    previousComparisons,
+  );
+  const changedRows = comparisons.filter((comparison) => comparison.hasChanged);
+  const changedOutcomeCount = changedRows.reduce(
+    (sum, comparison) => sum + (comparison.changedOutcomeCount ?? 0),
+    0,
+  );
   const unmatchedEvents = [
     ...buildUnmatchedEventRows(comparisonResult.unmatchedLeftEvents),
     ...buildUnmatchedEventRows(comparisonResult.unmatchedRightEvents),
@@ -380,6 +497,11 @@ function createComparisonSnapshot({
     leagues: buildLeagueIndex(comparisons),
     countries: buildCountryLeagueTree(comparisons),
     comparisons,
+    changes: {
+      count: changedRows.length,
+      outcomeCount: changedOutcomeCount,
+      rows: changedRows,
+    },
     unmatched: {
       leagues: unmatchedLeagues.length,
       events: unmatchedEvents.length,
@@ -538,6 +660,11 @@ export function projectComparisonData(data, filters = {}) {
     counts: data.counts,
     coverage: data.coverage,
     summary: data.summary,
+    changes: data.changes ?? {
+      count: 0,
+      outcomeCount: 0,
+      rows: [],
+    },
     leagues: data.leagues,
     countries: data.countries,
     progress: data.progress ?? {

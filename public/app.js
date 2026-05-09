@@ -95,6 +95,8 @@ function getRowSignature(row) {
           noVigPrice: outcome.noVigPrice ?? null,
           noVigProbability: outcome.noVigProbability ?? null,
           valuePercentage: outcome.valuePercentage ?? null,
+          hasChanged: outcome.hasChanged ?? false,
+          changeFlags: outcome.changeFlags ?? null,
           bestBookmaker: outcome.bestBookmaker ?? null,
           delta: outcome.delta ?? null,
         }))
@@ -347,6 +349,7 @@ function updateMatchCard(card, row, { highlight = false } = {}) {
     const pinnacleBest = outcome.bestBookmaker === "Pinnacle";
     const delta = outcome.delta;
     const valuePercentage = outcome.valuePercentage;
+    const changeFlags = outcome.changeFlags ?? {};
 
     let deltaClass = "cell--delta-zero";
     let deltaText = "-";
@@ -371,15 +374,33 @@ function updateMatchCard(card, row, { highlight = false } = {}) {
 
     const labelMap = { "1": "HOME", X: "DRAW", "2": "AWAY" };
     const label = labelMap[outcome.label] ?? outcome.label;
+    const leftClass = [merkurBest ? "cell--best-left" : "", changeFlags.leftPrice ? "cell--updated" : ""]
+      .filter(Boolean)
+      .join(" ");
+    const rightClass = [pinnacleBest ? "cell--best-right" : "", changeFlags.rightPrice ? "cell--updated" : ""]
+      .filter(Boolean)
+      .join(" ");
+    const bestClass = ["cell--best-price", changeFlags.bestPrice ? "cell--updated" : ""]
+      .filter(Boolean)
+      .join(" ");
+    const noVigClass = ["cell--no-vig", changeFlags.noVigPrice ? "cell--updated" : ""]
+      .filter(Boolean)
+      .join(" ");
+    const valueCellClass = [valueClass, changeFlags.valuePercentage ? "cell--updated" : ""]
+      .filter(Boolean)
+      .join(" ");
+    const deltaCellClass = [deltaClass, changeFlags.delta ? "cell--updated" : ""]
+      .filter(Boolean)
+      .join(" ");
 
     tr.innerHTML = `
       <td>${label}</td>
-      <td class="${merkurBest ? "cell--best-left" : ""}">${fmt(outcome.leftPrice)}</td>
-      <td class="${pinnacleBest ? "cell--best-right" : ""}">${fmt(outcome.rightPrice)}</td>
-      <td class="cell--best-price">${outcome.bestPrice != null ? fmt(outcome.bestPrice) : "-"}</td>
-      <td class="cell--no-vig">${outcome.noVigPrice != null ? fmt(outcome.noVigPrice) : "-"}</td>
-      <td class="${valueClass}">${valueText}</td>
-      <td class="${deltaClass}">${deltaText}</td>
+      <td class="${leftClass}">${fmt(outcome.leftPrice)}</td>
+      <td class="${rightClass}">${fmt(outcome.rightPrice)}</td>
+      <td class="${bestClass}">${outcome.bestPrice != null ? fmt(outcome.bestPrice) : "-"}</td>
+      <td class="${noVigClass}">${outcome.noVigPrice != null ? fmt(outcome.noVigPrice) : "-"}</td>
+      <td class="${valueCellClass}">${valueText}</td>
+      <td class="${deltaCellClass}">${deltaText}</td>
     `;
 
     tbody.append(tr);
