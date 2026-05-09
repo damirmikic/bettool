@@ -45,6 +45,160 @@ function leagueSourceKey(option) {
   });
 }
 
+function normalizeAdminText(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function simplifyLeagueName(countryName, leagueName) {
+  const country = String(countryName ?? "").trim();
+  const league = String(leagueName ?? "").trim();
+
+  if (!country || !league) {
+    return league;
+  }
+
+  const normalizedCountry = normalizeAdminText(country);
+  const normalizedLeague = normalizeAdminText(league);
+
+  if (normalizedCountry && normalizedLeague === normalizedCountry) {
+    return league;
+  }
+
+  const separators = [" - ", " — ", " | ", ": "];
+
+  for (const separator of separators) {
+    const prefix = `${country}${separator}`;
+    if (league.toLowerCase().startsWith(prefix.toLowerCase())) {
+      return league.slice(prefix.length).trim() || league;
+    }
+  }
+
+  return league;
+}
+
+function splitCompoundLeagueName(value) {
+  const text = String(value ?? "").trim();
+  const separators = [" - ", " — ", " | ", ": "];
+
+  for (const separator of separators) {
+    const index = text.indexOf(separator);
+    if (index > 0) {
+      return {
+        countryName: text.slice(0, index).trim(),
+        leagueName: text.slice(index + separator.length).trim(),
+      };
+    }
+  }
+
+  return null;
+}
+
+function inferCountryFromLeagueName(leagueName) {
+  const split = splitCompoundLeagueName(leagueName);
+  return split?.countryName ?? "";
+}
+
+function autoFillCanonicalCountry({ fallbackCountryName = "" } = {}) {
+  const form = elements.leagueMappingForm;
+  const countryInput = form.elements.canonicalCountryName;
+  const leagueName = form.elements.canonicalLeagueName.value.trim();
+  const inferredCountryName = inferCountryFromLeagueName(leagueName) || fallbackCountryName || "";
+  const previousAutoValue = countryInput.dataset.autoValue ?? "";
+  const canUpdate =
+    !countryInput.value.trim() ||
+    (previousAutoValue && countryInput.value.trim() === previousAutoValue);
+
+  if (!inferredCountryName || !canUpdate) {
+    return;
+  }
+
+  countryInput.value = inferredCountryName;
+  countryInput.dataset.autoValue = inferredCountryName;
+}
+
+function leagueDisplayParts(option) {
+  const sourceCountryName = String(option.source_country_name ?? "").trim();
+  const sourceLeagueName = String(option.source_league_name ?? "").trim();
+
+  if (
+    sourceCountryName &&
+    sourceLeagueName &&
+    normalizeAdminText(sourceCountryName) === normalizeAdminText(sourceLeagueName)
+  ) {
+    const split = splitCompoundLeagueName(sourceLeagueName);
+
+    if (split?.countryName && split?.leagueName) {
+      return split;
+    }
+  }
+
+  return {
+    countryName: sourceCountryName || "Unknown country",
+    leagueName: simplifyLeagueName(sourceCountryName, sourceLeagueName),
+  };
+}
+
+function leagueDisplayLabel(option) {
+  const { countryName, leagueName } = leagueDisplayParts(option);
+
+  return `${countryName} | ${leagueName}`;
+}
+
+function leagueLogicalKey(option) {
+  const { countryName, leagueName } = leagueDisplayParts(option);
+  const country = normalizeAdminText(countryName === "Unknown country" ? "" : countryName);
+  const league = normalizeAdminText(leagueName || option.source_league_name);
+
+  return [
+    option.bookmaker_slug ?? "",
+    country,
+    league,
+  ].join("::");
+}
+
+function mappedLeagueSourceKey(mapping) {
+  return JSON.stringify({
+    bookmakerSlug: mapping.bookmaker_slug ?? "",
+    sourceCountryName: mapping.source_country_name ?? "",
+    sourceLeagueName: mapping.source_league_name ?? "",
+  });
+}
+
+function prepareLeagueOptions(options, mappings) {
+  const mappedExactKeys = new Set(mappings.map(mappedLeagueSourceKey));
+  const mappedLogicalKeys = new Set(mappings.map(leagueLogicalKey));
+  const seenLogicalKeys = new Set();
+  const prepared = [];
+
+  for (const option of options) {
+    if (mappedExactKeys.has(leagueSourceKey(option))) {
+      continue;
+    }
+
+    const logicalKey = leagueLogicalKey(option);
+    if (mappedLogicalKeys.has(logicalKey)) {
+      continue;
+    }
+
+    if (seenLogicalKeys.has(logicalKey)) {
+      continue;
+    }
+
+    seenLogicalKeys.add(logicalKey);
+    prepared.push(option);
+  }
+
+  return prepared.sort((left, right) =>
+    leagueDisplayLabel(left).localeCompare(leagueDisplayLabel(right)),
+  );
+}
+
 function teamSourceKey(option) {
   return JSON.stringify({
     bookmakerSlug: option.bookmaker_slug ?? "",
@@ -175,17 +329,24 @@ function renderMappingForms() {
   state.sourceLeagueOptions = Array.isArray(state.sourceLeagueOptions) ? state.sourceLeagueOptions : [];
   state.sourceTeamOptions = Array.isArray(state.sourceTeamOptions) ? state.sourceTeamOptions : [];
   state.canonicalTeamOptions = Array.isArray(state.canonicalTeamOptions) ? state.canonicalTeamOptions : [];
+  state.mappedLeagues = Array.isArray(state.mappedLeagues) ? state.mappedLeagues : [];
 
-  const merkurOptions = state.sourceLeagueOptions.filter((o) => o.bookmaker_slug === "merkurxtip");
-  const pinnacleOptions = state.sourceLeagueOptions.filter((o) => o.bookmaker_slug === "pinnacle");
+  const merkurOptions = prepareLeagueOptions(
+    state.sourceLeagueOptions.filter((o) => o.bookmaker_slug === "merkurxtip"),
+    state.mappedLeagues.filter((m) => m.bookmaker_slug === "merkurxtip"),
+  );
+  const pinnacleOptions = prepareLeagueOptions(
+    state.sourceLeagueOptions.filter((o) => o.bookmaker_slug === "pinnacle"),
+    state.mappedLeagues.filter((m) => m.bookmaker_slug === "pinnacle"),
+  );
 
   fillSelect(elements.leagueMappingForm.elements.merkurLeagueKey, merkurOptions, {
     value: leagueSourceKey,
-    label: (option) => `${option.source_country_name ?? "Unknown country"} | ${option.source_league_name}`,
+    label: leagueDisplayLabel,
   });
   fillSelect(elements.leagueMappingForm.elements.pinnacleLeagueKey, pinnacleOptions, {
     value: leagueSourceKey,
-    label: (option) => `${option.source_country_name ?? "Unknown country"} | ${option.source_league_name}`,
+    label: leagueDisplayLabel,
   });
 
   populateTeamLeagueFilter();
@@ -530,7 +691,22 @@ elements.leagueMappingForm.querySelectorAll("[data-use-name]").forEach((btn) => 
     if (!key) return;
     const parsed = JSON.parse(key);
     elements.leagueMappingForm.elements.canonicalLeagueName.value = parsed.sourceLeagueName ?? "";
+    autoFillCanonicalCountry({
+      fallbackCountryName: parsed.sourceCountryName ?? "",
+    });
   });
+});
+
+elements.leagueMappingForm.elements.canonicalLeagueName.addEventListener("input", () => {
+  autoFillCanonicalCountry();
+});
+
+elements.leagueMappingForm.elements.canonicalCountryName.addEventListener("input", (event) => {
+  const autoValue = event.currentTarget.dataset.autoValue ?? "";
+
+  if (event.currentTarget.value.trim() !== autoValue) {
+    delete event.currentTarget.dataset.autoValue;
+  }
 });
 
 elements.leagueMappingForm.addEventListener("submit", async (event) => {
