@@ -59,13 +59,13 @@ function calculateArbitrage(outcomes) {
 }
 
 function calculateShinMarket(outcomes) {
-  const bestPrices = outcomes.map((outcome) => outcome.bestPrice);
+  const pinnaclePrices = outcomes.map((outcome) => outcome.rightPrice);
 
-  if (bestPrices.some((price) => price == null || !Number.isFinite(price) || price <= 1)) {
+  if (pinnaclePrices.some((price) => price == null || !Number.isFinite(price) || price <= 1)) {
     return null;
   }
 
-  const invertedOdds = bestPrices.map((price) => 1 / price);
+  const invertedOdds = pinnaclePrices.map((price) => 1 / price);
   const booksum = invertedOdds.reduce((sum, price) => sum + price, 0);
 
   if (!(booksum > 1)) {
@@ -112,6 +112,7 @@ function calculateShinMarket(outcomes) {
   );
 
   return {
+    source: "Pinnacle",
     z: Number(z.toFixed(6)),
     probabilities: normalizedProbabilities.map((probability) =>
       Number(probability.toFixed(6)),
@@ -296,6 +297,7 @@ export function compareBooks({
       maxDeltaAbs,
       maxValuePercentage: Number.isFinite(maxValuePercentage) ? maxValuePercentage : null,
       bestBookmakerCount,
+      noVigSource: shinMarket?.source ?? null,
       shinZ: shinMarket?.z ?? null,
       ...arbitrage,
     });
