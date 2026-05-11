@@ -253,6 +253,10 @@ function renderEmpty(container, message) {
   container.replaceChildren(empty);
 }
 
+function setAdminMessage(message) {
+  elements.message.textContent = message;
+}
+
 function setActiveTab(tabName) {
   for (const tab of elements.tabs) {
     tab.classList.toggle("admin-tab--active", tab.dataset.tab === tabName);
@@ -654,7 +658,7 @@ function applyCoverage(status, review) {
 }
 
 async function loadAdminData() {
-  elements.message.textContent = "Loading admin review queue...";
+  setAdminMessage("Loading admin review queue...");
 
   const [status, review, mappings] = await Promise.all([
     getJson("/api/admin/status"),
@@ -663,7 +667,7 @@ async function loadAdminData() {
   ]);
 
   applyCoverage(status, review);
-  elements.message.textContent = "Review, map, and unmap bookmaker-specific rows below.";
+  setAdminMessage("Review, map, and unmap bookmaker-specific rows below.");
 
   state.sourceLeagueOptions = mappings.sourceLeagueOptions ?? [];
   state.sourceTeamOptions = mappings.sourceTeamOptions ?? [];
@@ -706,29 +710,34 @@ elements.leagueMappingForm.elements.canonicalCountryName.addEventListener("input
 
 elements.leagueMappingForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  try {
+    const merkur = JSON.parse(elements.leagueMappingForm.elements.merkurLeagueKey.value);
+    const pinnacle = JSON.parse(elements.leagueMappingForm.elements.pinnacleLeagueKey.value);
+    const canonicalCountryName = elements.leagueMappingForm.elements.canonicalCountryName.value.trim() || null;
+    const canonicalLeagueName = elements.leagueMappingForm.elements.canonicalLeagueName.value.trim();
 
-  const merkur = JSON.parse(elements.leagueMappingForm.elements.merkurLeagueKey.value);
-  const pinnacle = JSON.parse(elements.leagueMappingForm.elements.pinnacleLeagueKey.value);
-  const canonicalCountryName = elements.leagueMappingForm.elements.canonicalCountryName.value.trim() || null;
-  const canonicalLeagueName = elements.leagueMappingForm.elements.canonicalLeagueName.value.trim();
+    setAdminMessage(`Saving league mapping for "${canonicalLeagueName}"...`);
 
-  await postJson("/api/admin/league-mappings", {
-    bookmakerSlug: merkur.bookmakerSlug,
-    sourceCountryName: merkur.sourceCountryName || null,
-    sourceLeagueName: merkur.sourceLeagueName,
-    canonicalCountryName,
-    canonicalLeagueName,
-  });
-  await postJson("/api/admin/league-mappings", {
-    bookmakerSlug: pinnacle.bookmakerSlug,
-    sourceCountryName: pinnacle.sourceCountryName || null,
-    sourceLeagueName: pinnacle.sourceLeagueName,
-    canonicalCountryName,
-    canonicalLeagueName,
-  });
+    await postJson("/api/admin/league-mappings", {
+      bookmakerSlug: merkur.bookmakerSlug,
+      sourceCountryName: merkur.sourceCountryName || null,
+      sourceLeagueName: merkur.sourceLeagueName,
+      canonicalCountryName,
+      canonicalLeagueName,
+    });
+    await postJson("/api/admin/league-mappings", {
+      bookmakerSlug: pinnacle.bookmakerSlug,
+      sourceCountryName: pinnacle.sourceCountryName || null,
+      sourceLeagueName: pinnacle.sourceLeagueName,
+      canonicalCountryName,
+      canonicalLeagueName,
+    });
 
-  await loadAdminData();
-  setActiveTab("mapped-leagues");
+    await loadAdminData();
+    setAdminMessage(`League mapping saved successfully for "${canonicalLeagueName}".`);
+  } catch (error) {
+    setAdminMessage(`League mapping failed: ${error.message}`);
+  }
 });
 
 elements.teamLeagueFilter.addEventListener("change", applyTeamLeagueFilter);
@@ -746,27 +755,32 @@ elements.teamMappingForm.querySelectorAll("[data-use-team-name]").forEach((btn) 
 
 elements.teamMappingForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  try {
+    const merkur = JSON.parse(elements.teamMappingForm.elements.merkurTeamKey.value);
+    const pinnacle = JSON.parse(elements.teamMappingForm.elements.pinnacleTeamKey.value);
+    const canonicalCountryName = elements.teamMappingForm.elements.canonicalCountryName.value.trim() || null;
+    const canonicalTeamName = elements.teamMappingForm.elements.canonicalTeamName.value.trim();
 
-  const merkur = JSON.parse(elements.teamMappingForm.elements.merkurTeamKey.value);
-  const pinnacle = JSON.parse(elements.teamMappingForm.elements.pinnacleTeamKey.value);
-  const canonicalCountryName = elements.teamMappingForm.elements.canonicalCountryName.value.trim() || null;
-  const canonicalTeamName = elements.teamMappingForm.elements.canonicalTeamName.value.trim();
+    setAdminMessage(`Saving team mapping for "${canonicalTeamName}"...`);
 
-  await postJson("/api/admin/team-mappings", {
-    bookmakerSlug: merkur.bookmakerSlug,
-    sourceTeamName: merkur.sourceTeamName,
-    canonicalCountryName,
-    canonicalTeamName,
-  });
-  await postJson("/api/admin/team-mappings", {
-    bookmakerSlug: pinnacle.bookmakerSlug,
-    sourceTeamName: pinnacle.sourceTeamName,
-    canonicalCountryName,
-    canonicalTeamName,
-  });
+    await postJson("/api/admin/team-mappings", {
+      bookmakerSlug: merkur.bookmakerSlug,
+      sourceTeamName: merkur.sourceTeamName,
+      canonicalCountryName,
+      canonicalTeamName,
+    });
+    await postJson("/api/admin/team-mappings", {
+      bookmakerSlug: pinnacle.bookmakerSlug,
+      sourceTeamName: pinnacle.sourceTeamName,
+      canonicalCountryName,
+      canonicalTeamName,
+    });
 
-  await loadAdminData();
-  setActiveTab("mapped-teams");
+    await loadAdminData();
+    setAdminMessage(`Team mapping saved successfully for "${canonicalTeamName}".`);
+  } catch (error) {
+    setAdminMessage(`Team mapping failed: ${error.message}`);
+  }
 });
 
 for (const tab of elements.tabs) {
@@ -777,11 +791,11 @@ for (const tab of elements.tabs) {
 
 elements.refreshButton.addEventListener("click", () => {
   loadAdminData().catch((error) => {
-    elements.message.textContent = error.message;
+    setAdminMessage(error.message);
   });
 });
 
 setActiveTab("review");
 loadAdminData().catch((error) => {
-  elements.message.textContent = error.message;
+  setAdminMessage(error.message);
 });
