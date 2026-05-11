@@ -200,10 +200,17 @@ const server = createServer(async (request, response) => {
 
   if (requestUrl.pathname === "/api/admin/mappings" && request.method === "GET") {
     try {
-      const mappings = await listAdminMappingData();
+      const [mappings, comparisonData] = await Promise.all([
+        listAdminMappingData(),
+        getComparisonData().catch(() => null),
+      ]);
       sendJson(response, 200, {
         ok: true,
         ...mappings,
+        sourceTeamOptions:
+          comparisonData?.sourceTeamOptions?.length > 0
+            ? comparisonData.sourceTeamOptions
+            : mappings.sourceTeamOptions,
       });
     } catch (error) {
       sendJson(response, 500, {

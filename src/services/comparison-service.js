@@ -261,31 +261,90 @@ function applyAdminMappings(events, mappings) {
 
   return events.map((event) => {
     const bookmakerSlug = getBookmakerSlug(event);
+    const sourceCountry = event.country ?? null;
+    const sourceLeague = event.league ?? null;
+    const sourceHome = event.key.home;
+    const sourceAway = event.key.away;
     const leagueKey = [
       bookmakerSlug,
-      String(event.country ?? "").toLowerCase(),
-      String(event.league ?? "").toLowerCase(),
+      String(sourceCountry ?? "").toLowerCase(),
+      String(sourceLeague ?? "").toLowerCase(),
     ].join("::");
     const leagueMapping = leagueIndex.get(leagueKey);
     const homeMapping = teamIndex.get(
-      [bookmakerSlug, String(event.key.home ?? "").toLowerCase()].join("::"),
+      [bookmakerSlug, String(sourceHome ?? "").toLowerCase()].join("::"),
     );
     const awayMapping = teamIndex.get(
-      [bookmakerSlug, String(event.key.away ?? "").toLowerCase()].join("::"),
+      [bookmakerSlug, String(sourceAway ?? "").toLowerCase()].join("::"),
     );
 
     return {
       ...event,
-      country: leagueMapping?.country ?? event.country,
-      league: leagueMapping?.league ?? event.league,
+      country: leagueMapping?.country ?? sourceCountry,
+      league: leagueMapping?.league ?? sourceLeague,
       key: {
-        home: homeMapping ?? event.key.home,
-        away: awayMapping ?? event.key.away,
+        home: homeMapping ?? sourceHome,
+        away: awayMapping ?? sourceAway,
       },
       admin: {
         bookmakerSlug,
+        sourceCountry,
+        sourceLeague,
+        sourceHome,
+        sourceAway,
       },
     };
+  });
+}
+
+function buildCurrentSourceTeamOptions(events) {
+  const seen = new Set();
+  const rows = [];
+
+  for (const event of events) {
+    const bookmakerSlug = event.admin?.bookmakerSlug ?? getBookmakerSlug(event);
+    const sourceLeagueName = event.admin?.sourceLeague ?? event.league ?? null;
+    const sourceCountryName = event.admin?.sourceCountry ?? event.country ?? null;
+    const teamNames = [event.admin?.sourceHome ?? event.key.home, event.admin?.sourceAway ?? event.key.away];
+
+    for (const sourceTeamName of teamNames) {
+      if (!sourceTeamName) {
+        continue;
+      }
+
+      const key = [
+        bookmakerSlug,
+        sourceCountryName ?? "",
+        sourceLeagueName ?? "",
+        sourceTeamName,
+      ].join("::");
+
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      rows.push({
+        bookmaker_slug: bookmakerSlug,
+        source_team_name: sourceTeamName,
+        source_league_name: sourceLeagueName,
+        source_country_name: sourceCountryName,
+      });
+    }
+  }
+
+  return rows.sort((left, right) => {
+    const bookmakerOrder = String(left.bookmaker_slug ?? "").localeCompare(String(right.bookmaker_slug ?? ""));
+    if (bookmakerOrder !== 0) {
+      return bookmakerOrder;
+    }
+
+    const leagueOrder = String(left.source_league_name ?? "").localeCompare(String(right.source_league_name ?? ""));
+    if (leagueOrder !== 0) {
+      return leagueOrder;
+    }
+
+    return String(left.source_team_name ?? "").localeCompare(String(right.source_team_name ?? ""));
   });
 }
 
@@ -471,6 +530,10 @@ function createComparisonSnapshot({
     ...comparisonResult.unmatchedLeftEvents,
     ...comparisonResult.unmatchedRightEvents,
   ]);
+  const sourceTeamOptions = buildCurrentSourceTeamOptions([
+    ...merkurEvents,
+    ...pinnacleEvents,
+  ]);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -502,6 +565,7 @@ function createComparisonSnapshot({
       outcomeCount: changedOutcomeCount,
       rows: changedRows,
     },
+    sourceTeamOptions,
     unmatched: {
       leagues: unmatchedLeagues.length,
       events: unmatchedEvents.length,

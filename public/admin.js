@@ -671,11 +671,6 @@ async function loadAdminData() {
   state.canonicalTeamOptions = mappings.canonicalTeamOptions ?? [];
   state.mappedLeagues = mappings.mappedLeagues ?? [];
 
-  console.log("[admin] sourceTeamOptions:", state.sourceTeamOptions.length,
-    "merkur:", state.sourceTeamOptions.filter(o => o.bookmaker_slug === "merkurxtip").length,
-    "pinnacle:", state.sourceTeamOptions.filter(o => o.bookmaker_slug === "pinnacle").length,
-    "sample:", state.sourceTeamOptions[0]);
-
   renderLeagues(review.unmatchedLeagues);
   renderEvents(review.unmatchedEvents);
   renderMappingForms();
