@@ -22,6 +22,7 @@ import {
   projectComparisonData,
   warmComparisonCache,
 } from "./services/comparison-service.js";
+import { fetchRecentEventNews, fetchRecentNews } from "./services/news-service.js";
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.PORT ?? 3000);
@@ -131,6 +132,28 @@ const server = createServer(async (request, response) => {
       });
     } catch (error) {
       sendJson(response, 500, {
+        ok: false,
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/news" && request.method === "GET") {
+    try {
+      const query = String(requestUrl.searchParams.get("q") ?? "").trim().slice(0, 240);
+      const home = String(requestUrl.searchParams.get("home") ?? "").trim().slice(0, 120);
+      const away = String(requestUrl.searchParams.get("away") ?? "").trim().slice(0, 120);
+      const news =
+        home || away
+          ? await fetchRecentEventNews({ home, away })
+          : await fetchRecentNews(query);
+      sendJson(response, 200, {
+        ok: true,
+        ...news,
+      });
+    } catch (error) {
+      sendJson(response, 502, {
         ok: false,
         detail: error instanceof Error ? error.message : String(error),
       });

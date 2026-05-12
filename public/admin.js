@@ -218,6 +218,24 @@ function canonicalTeamLabel(option) {
     : option.canonical_team_name;
 }
 
+function canonicalLeagueFilterKey(mapping) {
+  return JSON.stringify({
+    canonicalCountryName: mapping.canonical_country_name ?? "",
+    canonicalLeagueName: mapping.canonical_league_name ?? "",
+  });
+}
+
+function sourceCompetitionMatches(option, mapping) {
+  if (!option || !mapping) {
+    return false;
+  }
+
+  return (
+    normalizeAdminText(option.source_country_name) === normalizeAdminText(mapping.source_country_name) &&
+    normalizeAdminText(option.source_league_name) === normalizeAdminText(mapping.source_league_name)
+  );
+}
+
 async function postJson(url, payload = {}) {
   const response = await fetch(url, {
     method: "POST",
@@ -374,10 +392,11 @@ function populateTeamLeagueFilter() {
     const label = m.canonical_country_name
       ? `${m.canonical_country_name} — ${m.canonical_league_name}`
       : m.canonical_league_name;
-    if (seen.has(label)) continue;
-    seen.add(label);
+    const value = canonicalLeagueFilterKey(m);
+    if (seen.has(value)) continue;
+    seen.add(value);
     const opt = document.createElement("option");
-    opt.value = m.canonical_league_name;
+    opt.value = value;
     opt.textContent = label;
     filter.append(opt);
   }
@@ -388,26 +407,33 @@ function populateTeamLeagueFilter() {
 }
 
 function applyTeamLeagueFilter() {
-  const canonicalLeagueName = elements.teamLeagueFilter.value;
+  const selectedLeagueKey = elements.teamLeagueFilter.value;
   const merkurAll = state.sourceTeamOptions.filter((o) => o.bookmaker_slug === "merkurxtip");
   const pinnacleAll = state.sourceTeamOptions.filter((o) => o.bookmaker_slug === "pinnacle");
 
   let merkurFiltered = merkurAll;
   let pinnacleFiltered = pinnacleAll;
 
-  if (canonicalLeagueName) {
+  if (selectedLeagueKey) {
+    const selectedLeague = JSON.parse(selectedLeagueKey);
     const merkurMapping = state.mappedLeagues.find(
-      (m) => m.canonical_league_name === canonicalLeagueName && m.bookmaker_slug === "merkurxtip",
+      (m) =>
+        m.bookmaker_slug === "merkurxtip" &&
+        normalizeAdminText(m.canonical_country_name) === normalizeAdminText(selectedLeague.canonicalCountryName) &&
+        normalizeAdminText(m.canonical_league_name) === normalizeAdminText(selectedLeague.canonicalLeagueName),
     );
     const pinnacleMapping = state.mappedLeagues.find(
-      (m) => m.canonical_league_name === canonicalLeagueName && m.bookmaker_slug === "pinnacle",
+      (m) =>
+        m.bookmaker_slug === "pinnacle" &&
+        normalizeAdminText(m.canonical_country_name) === normalizeAdminText(selectedLeague.canonicalCountryName) &&
+        normalizeAdminText(m.canonical_league_name) === normalizeAdminText(selectedLeague.canonicalLeagueName),
     );
-    if (merkurMapping) {
-      merkurFiltered = merkurAll.filter((t) => t.source_league_name === merkurMapping.source_league_name);
-    }
-    if (pinnacleMapping) {
-      pinnacleFiltered = pinnacleAll.filter((t) => t.source_league_name === pinnacleMapping.source_league_name);
-    }
+    merkurFiltered = merkurMapping
+      ? merkurAll.filter((t) => sourceCompetitionMatches(t, merkurMapping))
+      : [];
+    pinnacleFiltered = pinnacleMapping
+      ? pinnacleAll.filter((t) => sourceCompetitionMatches(t, pinnacleMapping))
+      : [];
     const anyMapping = merkurMapping || pinnacleMapping;
     if (anyMapping) {
       elements.teamMappingForm.elements.canonicalCountryName.value = anyMapping.canonical_country_name ?? "";

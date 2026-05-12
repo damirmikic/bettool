@@ -8,6 +8,7 @@ const state = {
 
 const AUTO_REFRESH_MS = 45_000;
 const ACTIVE_REFRESH_POLL_MS = 3_000;
+const GOOGLE_NEWS_RECENCY = "when:7d";
 
 const store = {
   snapshot: null,
@@ -80,6 +81,119 @@ function fmtKickoff(value) {
   return isToday
     ? time
     : `${date.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
+}
+
+function buildGoogleNewsQuery(row) {
+  const home = row.key?.home;
+  const away = row.key?.away;
+  const queries = [
+    home && away ? `${home} vs ${away}` : "",
+    home ? `${home} team news` : "",
+    away ? `${away} team news` : "",
+  ].filter(Boolean);
+
+  return `${queries.join(" OR ")} ${GOOGLE_NEWS_RECENCY}`.trim();
+}
+
+function buildGoogleNewsUrl(row) {
+  const url = new URL("https://news.google.com/search");
+  url.searchParams.set("q", buildGoogleNewsQuery(row));
+  url.searchParams.set("hl", "en-US");
+  url.searchParams.set("gl", "US");
+  url.searchParams.set("ceid", "US:en");
+  return url.toString();
+}
+
+function buildNewsApiUrl(row) {
+  const url = new URL("/api/news", window.location.origin);
+  url.searchParams.set("home", row.key?.home ?? "");
+  url.searchParams.set("away", row.key?.away ?? "");
+  return url.toString();
+}
+
+function fmtNewsTime(value) {
+  if (!value) {
+    return "";
+  }
+
+  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const diffMs = new Date(value).getTime() - Date.now();
+  const diffHours = Math.round(diffMs / (60 * 60 * 1000));
+
+  if (Math.abs(diffHours) < 24) {
+    return formatter.format(diffHours, "hour");
+  }
+
+  return formatter.format(Math.round(diffHours / 24), "day");
+}
+
+function renderNewsPanelBody(panel, content) {
+  panel.querySelector(".news-panel__body").replaceChildren(content);
+}
+
+function renderNewsMessage(panel, message) {
+  const messageEl = document.createElement("p");
+  messageEl.className = "news-panel__message";
+  messageEl.textContent = message;
+  renderNewsPanelBody(panel, messageEl);
+}
+
+function renderNewsItems(panel, items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    renderNewsMessage(panel, "No recent Google News coverage found from the last 7 days.");
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "news-panel__list";
+
+  for (const item of items) {
+    const article = document.createElement("a");
+    article.className = "news-item";
+    article.href = item.url;
+    article.target = "_blank";
+    article.rel = "noopener noreferrer";
+
+    const title = document.createElement("strong");
+    title.className = "news-item__title";
+    title.textContent = item.title;
+
+    const meta = document.createElement("span");
+    meta.className = "news-item__meta";
+    meta.textContent = [item.source, fmtNewsTime(item.publishedAt)].filter(Boolean).join(" · ");
+
+    article.append(title, meta);
+    list.append(article);
+  }
+
+  renderNewsPanelBody(panel, list);
+}
+
+async function loadNewsPanel(card, row) {
+  const panel = card.querySelector(".news-panel");
+
+  if (panel.dataset.loaded === "true") {
+    return;
+  }
+
+  renderNewsMessage(panel, "Loading recent news...");
+
+  try {
+    const response = await fetch(buildNewsApiUrl(row));
+
+    if (!response.ok) {
+      throw new Error("Unable to load recent news.");
+    }
+
+    const data = await response.json();
+    renderNewsItems(panel, data.items);
+    panel.dataset.loaded = "true";
+  } catch (error) {
+    renderNewsMessage(
+      panel,
+      error instanceof Error ? error.message : "Unable to load recent news.",
+    );
+  }
 }
 
 function numericLimit(rawLimit) {
@@ -334,6 +448,29 @@ function updateMatchCard(card, row, { highlight = false } = {}) {
     state.country = row.country ?? "";
     state.league = row.league ?? "";
     applyFilters();
+  };
+
+  const newsLink = card.querySelector(".match-row__news");
+  const newsPanel = card.querySelector(".news-panel");
+  const googleNewsLink = card.querySelector(".news-panel__google");
+  const newsCloseButton = card.querySelector(".news-panel__close");
+  newsLink.title = `Show recent Google News for ${row.key.home} vs ${row.key.away}`;
+  newsLink.setAttribute("aria-label", newsLink.title);
+  googleNewsLink.href = buildGoogleNewsUrl(row);
+  newsLink.onclick = () => {
+    const isOpening = newsPanel.hidden;
+    newsPanel.hidden = !isOpening;
+    newsLink.classList.toggle("match-row__news--active", isOpening);
+    newsLink.setAttribute("aria-expanded", String(isOpening));
+
+    if (isOpening) {
+      loadNewsPanel(card, row);
+    }
+  };
+  newsCloseButton.onclick = () => {
+    newsPanel.hidden = true;
+    newsLink.classList.remove("match-row__news--active");
+    newsLink.setAttribute("aria-expanded", "false");
   };
 
   const edgeBadge = card.querySelector(".badge--edge");
